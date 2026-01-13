@@ -110,6 +110,7 @@ export const Fonts = {
     medium: "CircularStd-Medium",
     book: "CircularStd-Book",
   },
+  astroSpace: "AstroSpace",
   mono: Platform.select({
     ios: "Menlo",
     android: "monospace",

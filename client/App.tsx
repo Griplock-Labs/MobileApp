@@ -43,6 +43,7 @@ export default function App() {
     "CircularStd-Bold": require("../assets/fonts/CircularStd-Bold.ttf"),
     "CircularStd-Medium": require("../assets/fonts/CircularStd-Medium.ttf"),
     "CircularStd-Book": require("../assets/fonts/CircularStd-Book.ttf"),
+    "AstroSpace": require("../assets/fonts/AstroSpace.ttf"),
   });
 
   const [googleFontsLoaded, fontError] = useGoogleFonts({

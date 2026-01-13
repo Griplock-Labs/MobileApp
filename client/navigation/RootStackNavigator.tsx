@@ -47,7 +47,7 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="QRScanner"
         component={QRScannerScreen}
-        options={{ headerTitle: "Scan QR Code" }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="NFCReader"
