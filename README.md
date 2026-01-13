@@ -70,11 +70,6 @@ assets/images/              # App icons and illustrations
 - Session clears when returning to home screen
 - Real NFC hardware required (no simulation mode)
 
-## Dashboard
-
-The external dashboard is hosted at:
-https://3c523cdf-759f-4bc9-bad8-d989589f390a-00-lt9jwg5u2kqw.spock.replit.dev/
-
 ## License
 
 MIT
