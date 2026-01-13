@@ -6,8 +6,9 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
+import { useFonts } from "expo-font";
 
-import { useFonts, Orbitron_700Bold } from "@expo-google-fonts/orbitron";
+import { useFonts as useGoogleFonts, Orbitron_700Bold } from "@expo-google-fonts/orbitron";
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -37,11 +38,20 @@ const GriplockDarkTheme = {
 };
 
 export default function App() {
-  const [fontsLoaded, fontError] = useFonts({
+  const [customFontsLoaded] = useFonts({
+    "CircularStd-Black": require("../assets/fonts/CircularStd-Black.ttf"),
+    "CircularStd-Bold": require("../assets/fonts/CircularStd-Bold.ttf"),
+    "CircularStd-Medium": require("../assets/fonts/CircularStd-Medium.ttf"),
+    "CircularStd-Book": require("../assets/fonts/CircularStd-Book.ttf"),
+  });
+
+  const [googleFontsLoaded, fontError] = useGoogleFonts({
     Orbitron_700Bold,
     Inter_400Regular,
     Inter_500Medium,
   });
+
+  const fontsLoaded = customFontsLoaded && googleFontsLoaded;
 
   useEffect(() => {
     if (fontsLoaded || fontError) {

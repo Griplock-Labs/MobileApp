@@ -1,7 +1,5 @@
 import { Platform } from "react-native";
 
-// GRIPLOCK Cyberpunk Theme
-// Primary accent: Cyan/Teal hsl(180, 100%, 40%) = #00CCCC
 const cyanAccent = "#00CCCC";
 const cyanGlow = "rgba(0, 204, 204, 0.4)";
 
@@ -9,6 +7,7 @@ export const Colors = {
   light: {
     text: "#FFFFFF",
     textSecondary: "#B3B3B3",
+    textMuted: "#666666",
     buttonText: "#000000",
     tabIconDefault: "#747474",
     tabIconSelected: cyanAccent,
@@ -27,6 +26,7 @@ export const Colors = {
   dark: {
     text: "#FFFFFF",
     textSecondary: "#B3B3B3",
+    textMuted: "#666666",
     buttonText: "#000000",
     tabIconDefault: "#747474",
     tabIconSelected: cyanAccent,
@@ -90,6 +90,10 @@ export const Typography = {
     fontSize: 14,
     fontWeight: "400" as const,
   },
+  small: {
+    fontSize: 12,
+    fontWeight: "400" as const,
+  },
   mono: {
     fontSize: 14,
     fontWeight: "400" as const,
@@ -100,6 +104,12 @@ export const Fonts = {
   heading: "Orbitron_700Bold",
   body: "Inter_400Regular",
   bodyMedium: "Inter_500Medium",
+  circular: {
+    black: "CircularStd-Black",
+    bold: "CircularStd-Bold",
+    medium: "CircularStd-Medium",
+    book: "CircularStd-Book",
+  },
   mono: Platform.select({
     ios: "Menlo",
     android: "monospace",

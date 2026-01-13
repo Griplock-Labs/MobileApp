@@ -1,10 +1,18 @@
 import React, { useEffect } from "react";
-import { View, StyleSheet, Pressable, Platform } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Platform,
+  Dimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
+import Svg, { Path, Circle } from "react-native-svg";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -14,29 +22,86 @@ import Animated, {
   Easing,
   interpolate,
 } from "react-native-reanimated";
-import { Image } from "expo-image";
 
-import { Colors, Spacing, Fonts, Typography, Shadows } from "@/constants/theme";
+import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "Home">;
+
+function GridIcon({
+  size = 23,
+  color = "white",
+}: {
+  size?: number;
+  color?: string;
+}) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 23 23" fill="none">
+      <Path
+        d="M9.19009 22.6741V5.81899C9.19009 5.52097 9.0717 5.23516 8.86097 5.02443C8.65024 4.8137 8.36443 4.69531 8.06641 4.69531H2.44803C1.852 4.69531 1.28038 4.93209 0.858917 5.35355C0.437457 5.77501 0.200684 6.34663 0.200684 6.94266V20.4268C0.200684 21.0228 0.437457 21.5944 0.858917 22.0159C1.28038 22.4373 1.852 22.6741 2.44803 22.6741H15.9321C16.5282 22.6741 17.0998 22.4373 17.5213 22.0159C17.9427 21.5944 18.1795 21.0228 18.1795 20.4268V14.8084C18.1795 14.5104 18.0611 14.2246 17.8504 14.0138C17.6396 13.8031 17.3538 13.6847 17.0558 13.6847H0.200684"
+        stroke={color}
+        strokeWidth={0.401313}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M21.5505 0.200195H14.8085C14.1879 0.200195 13.6848 0.703282 13.6848 1.32387V8.06592C13.6848 8.68651 14.1879 9.1896 14.8085 9.1896H21.5505C22.1711 9.1896 22.6742 8.68651 22.6742 8.06592V1.32387C22.6742 0.703282 22.1711 0.200195 21.5505 0.200195Z"
+        stroke={color}
+        strokeWidth={0.401313}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function QRIcon({ ...props }) {
+  return (
+    <Svg width={61} height={61} viewBox="0 0 61 61" fill="none" {...props}>
+      <Path
+        d="M15.0492 31.7054H30.0985V16.6562H15.0492V31.7054ZM18.3907 20.0741H26.757V28.3895H18.3907V20.0741ZM30.0985 0C13.4678 0 0 13.4678 0 30.0985C0 46.7291 13.4678 60.1969 30.0985 60.1969C46.7291 60.1969 60.1969 46.7291 60.1969 30.0985C60.1969 13.4678 46.7291 0 30.0985 0ZM11.7078 13.3658H33.4654V35.0468H11.7078V13.3658ZM50.1726 30.0474V33.3889H43.4897V36.7303H50.1726V43.4387H46.8312V40.0973H40.1483V45.1222H46.8312V48.4636H28.4405V45.1222H25.0991V41.7807H21.7321V48.4636H11.7078V38.4393H15.0492V45.1222H18.3907V38.4393H33.4399V41.7807H28.415V45.1222H36.7813V40.0973H40.1228V30.0474H43.4642V23.4156H46.8056V26.706H50.1471L50.1726 30.0474ZM50.1726 19.9976H46.8312V16.7327H40.1483V19.9976H43.4897V23.3391H40.1483V26.6805H36.8068V16.7327H36.7813V13.3147H50.1726V16.6562V19.9976Z"
+        fill="white"
+      />
+    </Svg>
+  );
+}
+
+function UserIcon({
+  size = 21,
+  color = "white",
+}: {
+  size?: number;
+  color?: string;
+}) {
+  return (
+    <Svg width={size} height={size + 2} viewBox="0 0 21 23" fill="none">
+      <Path
+        d="M10.1963 12.6933C13.644 12.6933 16.4389 9.89837 16.4389 6.45065C16.4389 3.00293 13.644 0.208008 10.1963 0.208008C6.74854 0.208008 3.95361 3.00293 3.95361 6.45065C3.95361 9.89837 6.74854 12.6933 10.1963 12.6933Z"
+        stroke={color}
+        strokeWidth={0.416176}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M20.1845 22.6816C20.1845 20.0325 19.1321 17.492 17.259 15.6188C15.3858 13.7457 12.8453 12.6934 10.1962 12.6934C7.54719 12.6934 5.00665 13.7457 3.13349 15.6188C1.26034 17.492 0.208008 20.0325 0.208008 22.6816"
+        stroke={color}
+        strokeWidth={0.416176}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
   const pulseAnim = useSharedValue(0);
-  const glowAnim = useSharedValue(0);
 
   useEffect(() => {
     pulseAnim.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0, { duration: 1500, easing: Easing.inOut(Easing.ease) })
-      ),
-      -1,
-      false
-    );
-    glowAnim.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
         withTiming(0, { duration: 2000, easing: Easing.inOut(Easing.ease) })
@@ -46,14 +111,8 @@ export default function HomeScreen() {
     );
   }, []);
 
-  const logoGlowStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(glowAnim.value, [0, 1], [0.6, 1]),
-    transform: [{ scale: interpolate(glowAnim.value, [0, 1], [1, 1.02]) }],
-  }));
-
-  const buttonPulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(pulseAnim.value, [0, 1], [1, 1.05]) }],
-    shadowOpacity: interpolate(pulseAnim.value, [0, 1], [0.4, 0.8]),
+  const buttonGlowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(pulseAnim.value, [0, 1], [0.8, 1]),
   }));
 
   const generateSessionId = (): string => {
@@ -69,167 +128,215 @@ export default function HomeScreen() {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: insets.top + Spacing["5xl"],
-          paddingBottom: insets.bottom + Spacing["5xl"],
-        },
-      ]}
-    >
-      <View style={styles.content}>
-        <Animated.View style={[styles.logoContainer, logoGlowStyle]}>
-          <Image
-            source={require("../../assets/images/icon.png")}
-            style={styles.logo}
-            contentFit="contain"
-          />
-        </Animated.View>
+    <View style={styles.root}>
+      <View style={styles.backgroundWrapper}>
+        <Image
+          source={require("../../assets/images/home-background.png")}
+          style={styles.backgroundImage}
+          contentFit="contain"
+        />
+      </View>
 
-        <View style={styles.titleContainer}>
-          <Animated.Text style={[styles.title, logoGlowStyle]}>
-            GRIPLOCK
-          </Animated.Text>
-          <View style={styles.statusContainer}>
-            <View style={styles.statusDot} />
-            <Animated.Text style={styles.statusText}>
-              Ready to Connect
-            </Animated.Text>
+      <View
+        style={[
+          styles.container,
+          {
+            paddingTop: insets.top + Spacing["3xl"],
+            paddingBottom: insets.bottom,
+          },
+        ]}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>GRIPLOCK.</Text>
+          <Text style={styles.subtitle}>Ready to connect</Text>
+        </View>
+
+        <View style={styles.centerContent}>
+          <View style={styles.textContainer}>
+            <Text style={styles.tagline}>Ephemeral Wallet System</Text>
+            <Text style={styles.instruction}>
+              Scan QR Code to Connect{"\n"}Web Dashboard
+            </Text>
           </View>
         </View>
 
-        <Animated.View style={[styles.scanButtonWrapper, buttonPulseStyle]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.scanButton,
-              pressed && styles.scanButtonPressed,
-            ]}
-            onPress={handleScanPress}
-            testID="button-scan-qr"
-          >
-            <Feather name="maximize" size={32} color={Colors.dark.buttonText} />
-            <View style={styles.scanButtonTextContainer}>
-              <Animated.Text style={styles.scanButtonText}>
-                Scan QR Code
-              </Animated.Text>
-              <Animated.Text style={styles.scanButtonSubtext}>
-                Connect to Web Dashboard
-              </Animated.Text>
-            </View>
-          </Pressable>
-        </Animated.View>
-      </View>
+        <View style={styles.bottomNavContainer}>
+          <View style={styles.bottomNavWrapper}>
+            <Svg
+              width="100%"
+              height={100}
+              viewBox="0 0 428 100"
+              preserveAspectRatio="xMidYMid meet"
+              fill="none"
+            >
+              <Path
+                d="M249.215 30.7012H405.727L428 50.3655"
+                stroke="#747474"
+                strokeWidth={0.5}
+              />
+              <Path
+                d="M178.785 30.9014H22.273L0.000100315 50.5657"
+                stroke="#747474"
+                strokeWidth={0.5}
+              />
+              <Circle
+                cx={213.9}
+                cy={34.9142}
+                r={34.7135}
+                stroke="#747474"
+                strokeWidth={0.5}
+                fill="transparent"
+              />
+            </Svg>
 
-      <View style={styles.footer}>
-        <Animated.Text style={styles.footerText}>
-          Ephemeral Wallet System
-        </Animated.Text>
-        <Feather
-          name="shield"
-          size={14}
-          color={Colors.dark.textSecondary}
-          style={styles.footerIcon}
-        />
+            <View style={styles.navIconsOverlayWrapper}>
+              <View style={styles.navIconsOverlay}>
+                <Pressable style={styles.leftNavButton}>
+                  <GridIcon size={22} color={Colors.dark.text} />
+                </Pressable>
+
+                <Pressable style={styles.rightNavButton}>
+                  <UserIcon size={22} color={Colors.dark.text} />
+                </Pressable>
+              </View>
+
+              <Animated.View
+                style={[styles.scanButtonContainer, buttonGlowStyle]}
+              >
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.scanButton,
+                    pressed && styles.scanButtonPressed,
+                  ]}
+                  onPress={handleScanPress}
+                  testID="button-scan-qr"
+                >
+                  <QRIcon />
+                </Pressable>
+              </Animated.View>
+            </View>
+          </View>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
     backgroundColor: Colors.dark.backgroundRoot,
-    paddingHorizontal: Spacing["2xl"],
   },
-  content: {
-    flex: 1,
+  backgroundWrapper: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
   },
-  logoContainer: {
-    width: 120,
-    height: 120,
-    marginBottom: Spacing["3xl"],
-    ...Shadows.glow,
-  },
-  logo: {
+  backgroundImage: {
     width: "100%",
     height: "100%",
   },
-  titleContainer: {
+  container: {
+    flex: 1,
+    paddingHorizontal: Spacing["2xl"],
+  },
+  header: {
     alignItems: "center",
-    marginBottom: Spacing["5xl"],
   },
   title: {
-    fontFamily: Fonts.heading,
-    fontSize: Typography.display.fontSize,
-    color: Colors.dark.primary,
-    letterSpacing: 4,
-    textShadowColor: Colors.dark.primaryGlow,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 20,
+    fontFamily: Fonts.circular.black,
+    fontSize: 28,
+    color: Colors.dark.text,
+    letterSpacing: 2,
   },
-  statusContainer: {
-    flexDirection: "row",
+  subtitle: {
+    fontFamily: Fonts.circular.book,
+    fontSize: Typography.caption.fontSize,
+    color: "#A4BAD2",
+    marginTop: Spacing.xs,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: "flex-end",
     alignItems: "center",
-    marginTop: Spacing.md,
+    paddingBottom: SCREEN_HEIGHT * 0.08,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.dark.primary,
-    marginRight: Spacing.sm,
+  textContainer: {
+    alignItems: "center",
   },
-  statusText: {
-    fontFamily: Fonts.body,
+  tagline: {
+    fontFamily: Fonts.circular.book,
     fontSize: Typography.caption.fontSize,
     color: Colors.dark.textSecondary,
+    marginBottom: Spacing.md,
   },
-  scanButtonWrapper: {
-    ...Shadows.glow,
+  instruction: {
+    fontFamily: Fonts.circular.medium,
+    fontSize: Typography.body.fontSize,
+    color: "#A4BAD2",
+    textAlign: "center",
+    lineHeight: 24,
   },
-  scanButton: {
-    flexDirection: "row",
+  bottomNavContainer: {
     alignItems: "center",
-    backgroundColor: Colors.dark.primary,
-    paddingVertical: Spacing.xl,
-    paddingHorizontal: Spacing["3xl"],
-    borderRadius: 16,
-    gap: Spacing.lg,
+    marginHorizontal: -Spacing["2xl"],
   },
-  scanButtonPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
+  bottomNavWrapper: {
+    position: "relative",
+    width: "100%",
+    height: 100,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  scanButtonTextContainer: {
-    alignItems: "flex-start",
-  },
-  scanButtonText: {
-    fontFamily: Fonts.heading,
-    fontSize: Typography.subheading.fontSize,
-    color: Colors.dark.buttonText,
-    letterSpacing: 1,
-  },
-  scanButtonSubtext: {
-    fontFamily: Fonts.body,
-    fontSize: Typography.caption.fontSize,
-    color: Colors.dark.buttonText,
-    opacity: 0.7,
-    marginTop: 2,
-  },
-  footer: {
-    flexDirection: "row",
+  navIconsOverlayWrapper: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: "center",
     alignItems: "center",
   },
-  footerText: {
-    fontFamily: Fonts.body,
-    fontSize: Typography.caption.fontSize,
-    color: Colors.dark.textSecondary,
+  navIconsOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
   },
-  footerIcon: {
-    marginLeft: Spacing.sm,
+  leftNavButton: {
+    width: "50%",
+    height: 44,
+    display: "flex",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 20,
+  },
+  rightNavButton: {
+    width: "50%",
+    height: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 20,
+  },
+  scanButtonContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: -28,
+  },
+  scanButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 35,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scanButtonPressed: {
+    opacity: 0.7,
   },
 });
