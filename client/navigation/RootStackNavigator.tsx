@@ -11,7 +11,7 @@ import SuccessScreen from "@/screens/SuccessScreen";
 export type RootStackParamList = {
   Home: undefined;
   QRScanner: { sessionId: string };
-  NFCReader: { sessionId: string };
+  NFCReader: { sessionId?: string };
   PINInput: { sessionId: string; nfcData: string };
   Success: { sessionId: string; walletAddress: string };
 };
@@ -32,7 +32,6 @@ export default function RootStackNavigator() {
           fontSize: 18,
           color: Colors.dark.text,
         },
-        headerBackTitleVisible: false,
         contentStyle: {
           backgroundColor: Colors.dark.backgroundRoot,
         },
@@ -52,19 +51,18 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="NFCReader"
         component={NFCReaderScreen}
-        options={{ headerTitle: "Tap Card" }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="PINInput"
         component={PINInputScreen}
-        options={{ headerTitle: "Enter PIN" }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="Success"
         component={SuccessScreen}
         options={{
-          headerTitle: "Connected",
-          headerBackVisible: false,
+          headerShown: false,
           gestureEnabled: false,
         }}
       />

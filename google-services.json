@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "726442626587",
+    "project_id": "griplock-f1056",
+    "storage_bucket": "griplock-f1056.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:726442626587:android:c960da086b4850795eb2be",
+        "android_client_info": {
+          "package_name": "com.griplock.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDnK2jNgZ2h2uMXuVGsXGc8biscHQ87aAY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,16 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { View, StyleSheet, Platform, Pressable, Text } from "react-native";
-import { useHeaderHeight } from "@react-navigation/elements";
+import { View, StyleSheet, Platform, Pressable, Text, Dimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withRepeat,
   withSequence,
   withTiming,
   withDelay,
@@ -18,10 +17,14 @@ import Animated, {
   interpolate,
 } from "react-native-reanimated";
 import { Image } from "expo-image";
+import Svg, { Path, Circle } from "react-native-svg";
 
-import { Colors, Spacing, Fonts, Typography, Shadows } from "@/constants/theme";
+import { Colors, Spacing, Fonts } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
+import ScreenHeader from "@/components/ScreenHeader";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "Success">;
 type RouteProps = RouteProp<RootStackParamList, "Success">;
@@ -29,36 +32,36 @@ type RouteProps = RouteProp<RootStackParamList, "Success">;
 export default function SuccessScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RouteProps>();
-  const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
   const [copied, setCopied] = useState(false);
   const { cleanup, status: connectionStatus } = useWebRTC();
   
-  const iconScale = useSharedValue(0);
-  const iconOpacity = useSharedValue(0);
+  const logoScale = useSharedValue(0);
+  const logoOpacity = useSharedValue(0);
   const contentOpacity = useSharedValue(0);
-  const pulseAnim = useSharedValue(0);
+  const pulseAnim = useSharedValue(1);
 
   const { walletAddress } = route.params;
-  const truncatedAddress = `${walletAddress.slice(0, 10)}...${walletAddress.slice(-8)}`;
+  const truncatedAddress = `${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}`;
 
   useEffect(() => {
-    iconScale.value = withSpring(1, { damping: 12, stiffness: 100 });
-    iconOpacity.value = withTiming(1, { duration: 300 });
+    logoScale.value = withSpring(1, { damping: 12, stiffness: 100 });
+    logoOpacity.value = withTiming(1, { duration: 400 });
     contentOpacity.value = withDelay(300, withTiming(1, { duration: 400 }));
     
-    pulseAnim.value = withDelay(
-      500,
+    pulseAnim.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0, { duration: 1500, easing: Easing.inOut(Easing.ease) })
-      )
+        withTiming(1.05, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
     );
   }, []);
 
-  const iconAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: iconScale.value }],
-    opacity: iconOpacity.value,
+  const logoAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: logoScale.value * pulseAnim.value }],
+    opacity: logoOpacity.value,
   }));
 
   const contentAnimStyle = useAnimatedStyle(() => ({
@@ -68,12 +71,7 @@ export default function SuccessScreen() {
     ],
   }));
 
-  const glowAnimStyle = useAnimatedStyle(() => ({
-    shadowOpacity: interpolate(pulseAnim.value, [0, 1], [0.4, 0.8]),
-    transform: [{ scale: interpolate(pulseAnim.value, [0, 1], [1, 1.02]) }],
-  }));
-
-  const handleDone = async () => {
+  const handleBackToHome = async () => {
     if (Platform.OS !== "web") {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -103,97 +101,102 @@ export default function SuccessScreen() {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: headerHeight + Spacing["5xl"],
-          paddingBottom: insets.bottom + Spacing["2xl"],
-        },
-      ]}
-    >
-      <View style={styles.content}>
-        <Animated.View style={[styles.iconContainer, iconAnimStyle, glowAnimStyle]}>
-          <Image
-            source={require("../../assets/images/success-checkmark.png")}
-            style={styles.successImage}
-            contentFit="contain"
-          />
-        </Animated.View>
+    <View style={styles.container}>
+      <Image
+        source={require("../../assets/images/success-bg-pattern.png")}
+        style={styles.bgPattern}
+        contentFit="cover"
+      />
+      
+      <ScreenHeader rightText="Connected" />
+      
+      <Animated.View style={[styles.titleSection, contentAnimStyle]}>
+        <Text style={styles.title}>WALLET CONNECTED</Text>
+        <Text style={styles.subtitle}>Session Active</Text>
+      </Animated.View>
 
-        <Animated.View style={[styles.textContainer, contentAnimStyle]}>
-          <Text style={styles.title}>Wallet Connected</Text>
-          <View style={styles.statusRow}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>Session Active</Text>
-          </View>
-          {isConnected ? (
-            <View style={styles.dashboardStatus}>
-              <View style={styles.dashboardDot} />
-              <Text style={styles.dashboardText}>Dashboard Synced</Text>
-            </View>
-          ) : null}
-        </Animated.View>
-
-        <Animated.View style={[styles.addressContainer, contentAnimStyle]}>
-          <View style={styles.addressLabelRow}>
-            <Text style={styles.addressLabel}>Solana Wallet Address</Text>
-            <View style={styles.solBadge}>
-              <Text style={styles.solBadgeText}>SOL</Text>
-            </View>
-          </View>
-          <Pressable
-            style={({ pressed }) => [
-              styles.addressBox,
-              pressed && styles.addressBoxPressed,
-              copied && styles.addressBoxCopied,
-            ]}
-            onPress={handleCopyAddress}
-            testID="button-copy-address"
-          >
-            <Text style={styles.addressText}>{truncatedAddress}</Text>
-            <View style={styles.copyIndicator}>
-              {copied ? (
-                <>
-                  <Feather name="check" size={16} color={Colors.dark.primary} />
-                  <Text style={styles.copiedText}>Copied</Text>
-                </>
-              ) : (
-                <Feather name="copy" size={16} color={Colors.dark.textSecondary} />
-              )}
-            </View>
-          </Pressable>
-        </Animated.View>
-
-        <Animated.View style={[styles.infoContainer, contentAnimStyle]}>
-          <View style={styles.infoItem}>
-            <Feather name="shield" size={18} color={Colors.dark.primary} />
-            <Text style={styles.infoText}>Ephemeral wallet - no data stored</Text>
-          </View>
-          <View style={styles.infoItem}>
-            <Feather name="monitor" size={18} color={Colors.dark.primary} />
-            <Text style={styles.infoText}>Check dashboard for your assets</Text>
-          </View>
-          <View style={styles.infoItem}>
-            <Feather name="clock" size={18} color={Colors.dark.primary} />
-            <Text style={styles.infoText}>Wallet clears on session end</Text>
-          </View>
+      <View style={styles.logoSection}>
+        <Animated.View style={[styles.logoContainer, logoAnimStyle]}>
+          <Svg width={120} height={120} viewBox="0 0 110 110">
+            <Circle cx="55" cy="55" r="40" stroke="#22C55E" strokeWidth="3" fill="none" />
+            <Path
+              d="M35 55 A20 20 0 0 1 75 55"
+              stroke="#22C55E"
+              strokeWidth="6"
+              strokeLinecap="round"
+              fill="none"
+            />
+            <Path
+              d="M35 55 A20 20 0 0 0 75 55"
+              stroke="#22C55E"
+              strokeWidth="6"
+              strokeLinecap="round"
+              fill="none"
+            />
+            <Path
+              d="M45 65 L55 78 L65 65"
+              stroke="#22C55E"
+              strokeWidth="6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+            <Path
+              d="M55 20 L55 40"
+              stroke="#22C55E"
+              strokeWidth="5"
+              strokeLinecap="round"
+            />
+          </Svg>
         </Animated.View>
       </View>
 
-      <Animated.View style={contentAnimStyle}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.doneButton,
-            pressed && styles.doneButtonPressed,
-          ]}
-          onPress={handleDone}
-          testID="button-done"
-        >
-          <Text style={styles.doneButtonText}>Done</Text>
-          <Feather name="check" size={20} color={Colors.dark.buttonText} />
-        </Pressable>
-      </Animated.View>
+      <View style={[styles.bottomSection, { paddingBottom: insets.bottom + Spacing.xl }]}>
+        <Animated.View style={[styles.addressSection, contentAnimStyle]}>
+          <Text style={styles.addressLabel}>SOL Wallet Address</Text>
+          
+          <View style={styles.addressBoxOuter}>
+            <View style={styles.addressBoxMiddle}>
+              <View style={styles.addressBoxInner}>
+                <Text style={styles.addressText}>{truncatedAddress}</Text>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.copyButton,
+                    pressed && styles.copyButtonPressed,
+                    copied && styles.copyButtonCopied,
+                  ]}
+                  onPress={handleCopyAddress}
+                  testID="button-copy-address"
+                >
+                  <Text style={[styles.copyButtonText, copied && styles.copyButtonTextCopied]}>
+                    {copied ? "Copied!" : "Copy"}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Animated.View>
+
+        {isConnected ? (
+          <Animated.View style={[styles.syncStatus, contentAnimStyle]}>
+            <View style={styles.syncDot} />
+            <Text style={styles.syncText}>Dashboard Synced</Text>
+          </Animated.View>
+        ) : null}
+
+        <Animated.View style={contentAnimStyle}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.backToHomeButton,
+              pressed && styles.backToHomeButtonPressed,
+            ]}
+            onPress={handleBackToHome}
+            testID="button-back-home"
+          >
+            <Text style={styles.backToHomeText}>Back to Home</Text>
+          </Pressable>
+        </Animated.View>
+      </View>
     </View>
   );
 }
@@ -201,160 +204,131 @@ export default function SuccessScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.dark.backgroundRoot,
-    paddingHorizontal: Spacing["2xl"],
+    backgroundColor: "#0A0A0A",
   },
-  content: {
+  bgPattern: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: "100%",
+    height: "100%",
+  },
+  titleSection: {
+    alignItems: "center",
+    marginTop: Spacing["2xl"],
+  },
+  title: {
+    fontFamily: "AstroSpace",
+    fontSize: 20,
+    color: "#FFFFFF",
+    textAlign: "center",
+    marginBottom: Spacing.sm,
+  },
+  subtitle: {
+    fontFamily: Fonts.body,
+    fontSize: 16,
+    color: "rgba(255, 255, 255, 0.5)",
+    textAlign: "center",
+  },
+  logoSection: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  iconContainer: {
+  logoContainer: {
     width: 120,
     height: 120,
-    marginBottom: Spacing["3xl"],
-    ...Shadows.glow,
   },
-  successImage: {
+  bottomSection: {
+    paddingHorizontal: Spacing.xl,
+    gap: Spacing.xl,
+  },
+  addressSection: {
     width: "100%",
-    height: "100%",
-  },
-  textContainer: {
-    alignItems: "center",
-    marginBottom: Spacing["3xl"],
-  },
-  title: {
-    fontFamily: Fonts.heading,
-    fontSize: Typography.heading.fontSize,
-    color: Colors.dark.primary,
-    marginBottom: Spacing.md,
-    textShadowColor: Colors.dark.primaryGlow,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-  },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.dark.success,
-    marginRight: Spacing.sm,
-  },
-  statusText: {
-    fontFamily: Fonts.body,
-    fontSize: Typography.caption.fontSize,
-    color: Colors.dark.textSecondary,
-  },
-  addressContainer: {
-    width: "100%",
-    marginBottom: Spacing["3xl"],
-  },
-  addressLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: Spacing.sm,
   },
   addressLabel: {
-    fontFamily: Fonts.bodyMedium,
-    fontSize: Typography.caption.fontSize,
-    color: Colors.dark.textSecondary,
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: "rgba(255, 255, 255, 0.5)",
+    marginBottom: Spacing.sm,
   },
-  solBadge: {
-    backgroundColor: Colors.dark.primary,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: 6,
+  addressBoxOuter: {
+    borderWidth: 0.7,
+    borderColor: "#484848",
+    padding: 3,
   },
-  solBadgeText: {
-    fontFamily: Fonts.heading,
-    fontSize: 10,
-    color: Colors.dark.backgroundRoot,
-    letterSpacing: 1,
+  addressBoxMiddle: {
+    borderWidth: 0.7,
+    borderColor: "#484848",
+    padding: 3,
   },
-  addressBox: {
+  addressBoxInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: Colors.dark.backgroundSecondary,
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.xl,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-  },
-  addressBoxPressed: {
-    backgroundColor: Colors.dark.backgroundTertiary,
-  },
-  addressBoxCopied: {
-    borderColor: Colors.dark.primary,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
   },
   addressText: {
-    fontFamily: Fonts.mono,
-    fontSize: Typography.mono.fontSize,
-    color: Colors.dark.text,
-    letterSpacing: 1,
-  },
-  copyIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-  },
-  copiedText: {
     fontFamily: Fonts.body,
-    fontSize: Typography.caption.fontSize,
-    color: Colors.dark.primary,
+    fontSize: 12,
+    color: "#FFFFFF",
+    flex: 1,
   },
-  infoContainer: {
-    gap: Spacing.lg,
+  copyButton: {
+    backgroundColor: "#D9D9D9",
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
   },
-  infoItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
+  copyButtonPressed: {
+    backgroundColor: "#BBBBBB",
   },
-  infoText: {
+  copyButtonCopied: {
+    backgroundColor: "#22C55E",
+  },
+  copyButtonText: {
     fontFamily: Fonts.body,
-    fontSize: Typography.caption.fontSize,
-    color: Colors.dark.textSecondary,
+    fontSize: 11,
+    color: "#000000",
+    textAlign: "center",
   },
-  doneButton: {
+  copyButtonTextCopied: {
+    color: "#FFFFFF",
+  },
+  syncStatus: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Colors.dark.primary,
-    paddingVertical: Spacing.lg,
-    borderRadius: 12,
-    gap: Spacing.md,
-    ...Shadows.glow,
+    gap: Spacing.sm,
   },
-  doneButtonPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
-  doneButtonText: {
-    fontFamily: Fonts.heading,
-    fontSize: Typography.body.fontSize,
-    color: Colors.dark.buttonText,
-  },
-  dashboardStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: Spacing.sm,
-  },
-  dashboardDot: {
+  syncDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.dark.primary,
-    marginRight: Spacing.sm,
+    backgroundColor: "#06B040",
   },
-  dashboardText: {
+  syncText: {
     fontFamily: Fonts.body,
-    fontSize: Typography.caption.fontSize,
-    color: Colors.dark.primary,
+    fontSize: 16,
+    color: "#06B040",
+  },
+  backToHomeButton: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    paddingVertical: Spacing.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backToHomeButtonPressed: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+  },
+  backToHomeText: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: "#FFFFFF",
   },
 });
