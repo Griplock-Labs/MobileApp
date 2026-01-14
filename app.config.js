@@ -1,7 +1,9 @@
-const WALLET_DERIVATION_SALT = process.env.WALLET_DERIVATION_SALT || '';
+const WALLET_DERIVATION_SALT = process.env.WALLET_DERIVATION_SALT || "";
 
-if (!WALLET_DERIVATION_SALT && process.env.NODE_ENV !== 'production') {
-  console.warn('\n⚠️  WALLET_DERIVATION_SALT not set! Add it to .env file or EAS secrets.\n');
+if (!WALLET_DERIVATION_SALT && process.env.NODE_ENV !== "production") {
+  console.warn(
+    "\n⚠️  WALLET_DERIVATION_SALT not set! Add it to .env file or EAS secrets.\n"
+  );
 }
 
 module.exports = {
@@ -18,29 +20,31 @@ module.exports = {
       supportsTablet: false,
       bundleIdentifier: "com.griplock.wallet",
       infoPlist: {
-        NSCameraUsageDescription: "GRIPLOCK needs camera access to scan QR codes from the web dashboard.",
-        NFCReaderUsageDescription: "GRIPLOCK needs NFC access to read your secure card."
-      }
+        NSCameraUsageDescription:
+          "GRIPLOCK needs camera access to scan QR codes from the web dashboard.",
+        NFCReaderUsageDescription:
+          "GRIPLOCK needs NFC access to read your secure card.",
+      },
     },
     android: {
       adaptiveIcon: {
         backgroundColor: "#000000",
-        foregroundImage: "./assets/images/icon.png"
+        foregroundImage: "./assets/images/icon.png",
       },
       package: "com.griplock.mobile",
       edgeToEdgeEnabled: true,
-      predictiveBackGestureEnabled: false
+      predictiveBackGestureEnabled: false,
     },
     web: {
       output: "single",
-      favicon: "./assets/images/icon.png"
+      favicon: "./assets/images/icon.png",
     },
     plugins: [
       [
         "expo-dev-client",
         {
-          launchMode: "most-recent"
-        }
+          launchMode: "most-recent",
+        },
       ],
       [
         "expo-splash-screen",
@@ -50,28 +54,29 @@ module.exports = {
           resizeMode: "contain",
           backgroundColor: "#000000",
           dark: {
-            backgroundColor: "#000000"
-          }
-        }
+            backgroundColor: "#000000",
+          },
+        },
       ],
       "expo-web-browser",
       [
         "react-native-nfc-manager",
         {
-          nfcReaderUsageDescription: "GRIPLOCK needs NFC access to read your secure card.",
+          nfcReaderUsageDescription:
+            "GRIPLOCK needs NFC access to read your secure card.",
           selectIdentifiers: ["A0000000041010"],
-          systemCodes: []
-        }
-      ]
+          systemCodes: [],
+        },
+      ],
     ],
     experiments: {
-      reactCompiler: false
+      reactCompiler: false,
     },
     extra: {
       walletDerivationSalt: WALLET_DERIVATION_SALT,
       eas: {
-        projectId: "af453638-adee-4bbe-a28e-d5a8da1874c4"
-      }
-    }
-  }
+        projectId: "af453638-adee-4bbe-a28e-d5a8da1874c4",
+      },
+    },
+  },
 };
