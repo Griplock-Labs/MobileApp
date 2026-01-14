@@ -99,7 +99,7 @@ export async function initializeWebRTCFromQR(
       try {
         const msg = JSON.parse(event.data);
         
-        if (msg.type === 'registered') {
+        if (msg.type === 'registered' || (msg.type === 'ack' && msg.received === 'register')) {
           console.log('Registered to session, ready for NFC tap');
           session.status = 'connected';
           onStatusChange('connected');
