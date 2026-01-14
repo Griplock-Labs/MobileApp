@@ -127,16 +127,6 @@ export default function HomeScreen() {
     navigation.navigate("QRScanner", { sessionId });
   };
 
-  const handleTestPIN = async () => {
-    if (Platform.OS !== "web") {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    navigation.navigate("Success", { 
-      sessionId: "test-session", 
-      walletAddress: "5Xc7xMkYqR9vNpZbJfQE3mHnTgWvKLdPsYrAzBcDeFgH" 
-    });
-  };
-
   return (
     <View style={styles.root}>
       <View style={styles.backgroundWrapper}>
@@ -160,13 +150,6 @@ export default function HomeScreen() {
           <Text style={styles.title}>GRIPLOCK.</Text>
           <Text style={styles.subtitle}>Ready to connect</Text>
         </View>
-
-        <Pressable 
-          style={styles.testButton} 
-          onPress={handleTestPIN}
-        >
-          <Text style={styles.testButtonText}>Test Success Screen</Text>
-        </Pressable>
 
         <View style={styles.centerContent}>
           <View style={styles.textContainer}>
@@ -355,20 +338,5 @@ const styles = StyleSheet.create({
   },
   scanButtonPressed: {
     opacity: 0.7,
-  },
-  testButton: {
-    backgroundColor: "#1A1A1A",
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: 8,
-    alignSelf: "center",
-    marginTop: Spacing.md,
-    borderWidth: 1,
-    borderColor: "#3A3A3A",
-  },
-  testButtonText: {
-    fontFamily: Fonts.body,
-    fontSize: 12,
-    color: Colors.dark.textSecondary,
   },
 });

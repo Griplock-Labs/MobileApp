@@ -29,6 +29,7 @@ import Animated, {
 import { Colors, Spacing, Fonts, Typography, BorderRadius } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
+import ScreenHeader from "@/components/ScreenHeader";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "QRScanner">;
 type RouteProps = RouteProp<RootStackParamList, "QRScanner">;
@@ -282,27 +283,20 @@ export default function QRScannerScreen() {
 
   if (!permission) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.container}>
+        <ScreenHeader showBack={false} />
         <View style={styles.permissionContainer}>
           <ActivityIndicator size="large" color={Colors.dark.text} />
           <Text style={styles.loadingText}>Loading camera...</Text>
         </View>
-
       </View>
     );
   }
 
   if (!permission.granted) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <Pressable style={styles.backButton} onPress={handleBack}>
-            <BackArrowIcon />
-              <Text style={styles.backText}>back</Text>
-          </Pressable>
-          <GriplockLogo size={40} />
-          <View style={styles.headerSpacer} />
-        </View>
+      <View style={styles.container}>
+        <ScreenHeader leftText="back" rightText="Scan QR" onBack={handleBack} />
 
         <View style={styles.permissionContainer}>
           <View style={styles.iconWrapper}>
@@ -347,12 +341,8 @@ export default function QRScannerScreen() {
 
   if (isConnecting) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <View style={styles.backButton} />
-          <GriplockLogo size={40} />
-          <View style={styles.headerSpacer} />
-        </View>
+      <View style={styles.container}>
+        <ScreenHeader leftText="back" rightText="Connecting..." showBack={false} />
 
         <View style={styles.permissionContainer}>
           <ActivityIndicator size="large" color={Colors.dark.text} />
@@ -361,23 +351,14 @@ export default function QRScannerScreen() {
             Connecting to your GRIPLOCK dashboard...
           </Text>
         </View>
-
-
       </View>
     );
   }
 
   if (connectionError) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <Pressable style={styles.backButton} onPress={handleBack}>
-            <BackArrowIcon />
-              <Text style={styles.backText}>back</Text>
-          </Pressable>
-          <GriplockLogo size={40} />
-          <View style={styles.headerSpacer} />
-        </View>
+      <View style={styles.container}>
+        <ScreenHeader leftText="back" rightText="Error" onBack={handleBack} />
 
         <View style={styles.permissionContainer}>
           <View style={styles.iconWrapper}>
@@ -404,15 +385,8 @@ export default function QRScannerScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={handleBack}>
-          <BackArrowIcon />
-              <Text style={styles.backText}>back</Text>
-        </Pressable>
-        <GriplockLogo size={40} />
-        <View style={styles.headerSpacer} />
-      </View>
+    <View style={styles.container}>
+      <ScreenHeader leftText="back" rightText="Scan QR" onBack={handleBack} />
 
       <View style={styles.content}>
         <Text style={styles.title}>SCAN QR CODE</Text>

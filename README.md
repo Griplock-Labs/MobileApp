@@ -25,6 +25,18 @@ GRIPLOCK enables secure, ephemeral Solana wallet creation through:
 npm install
 ```
 
+### Configure Secrets
+
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Set your wallet derivation salt in `.env`:
+   ```
+   WALLET_DERIVATION_SALT=your_secret_salt_value_here
+   ```
+
 ### Development (Expo Go - Limited)
 
 ```bash
@@ -38,6 +50,9 @@ Note: NFC features require a native build.
 ```bash
 # Login to Expo
 npx eas-cli login
+
+# Set EAS secret for wallet derivation salt
+eas secret:create --name wallet_derivation_salt --value YOUR_SECRET_SALT
 
 # Build development APK
 npx eas-cli build --platform android --profile development

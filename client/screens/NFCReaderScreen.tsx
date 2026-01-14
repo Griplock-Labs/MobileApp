@@ -20,6 +20,7 @@ import Animated, {
 import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
+import ScreenHeader from "@/components/ScreenHeader";
 
 let NfcManager: any = null;
 let NfcTech: any = null;
@@ -219,8 +220,9 @@ export default function NFCReaderScreen() {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
         
-        const tagId = tag.id || "";
-        const nfcDataString = `ntag_${tagId}_${Date.now()}`;
+        const rawTagId = tag.id || "";
+        const tagId = rawTagId.replace(/[^0-9a-f]/gi, "").toLowerCase();
+        const nfcDataString = `griplock_${tagId}`;
         
         setScanStatus("Card detected!");
         setNfcData(nfcDataString);
@@ -350,27 +352,7 @@ export default function NFCReaderScreen() {
         />
       </View>
 
-      <View
-        style={[
-          styles.header,
-          { paddingTop: insets.top + Spacing["4xl"] },
-        ]}
-      >
-        <Pressable
-          style={styles.backButton}
-          onPress={handleBackPress}
-          testID="button-back"
-        >
-          <BackArrowIcon />
-          <Text style={styles.backText}>back</Text>
-        </Pressable>
-
-        <View style={styles.logoContainer}>
-          <GriplockLogo />
-        </View>
-
-        <Text style={styles.tapCardText}>Tap card</Text>
-      </View>
+      <ScreenHeader leftText="back" rightText="Tap card" onBack={handleBackPress} />
 
       <View style={styles.content}>
         <View style={styles.nfcContainer}>

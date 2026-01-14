@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { View, StyleSheet, Platform, Pressable, Text, Dimensions } from "react-native";
+import {
+  View,
+  StyleSheet,
+  Platform,
+  Pressable,
+  Text,
+  Dimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -17,9 +24,9 @@ import Animated, {
   interpolate,
 } from "react-native-reanimated";
 import { Image } from "expo-image";
-import Svg, { Path, Circle } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 
-import { Colors, Spacing, Fonts } from "@/constants/theme";
+import { Spacing, Fonts } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
 import ScreenHeader from "@/components/ScreenHeader";
@@ -34,8 +41,33 @@ export default function SuccessScreen() {
   const route = useRoute<RouteProps>();
   const insets = useSafeAreaInsets();
   const [copied, setCopied] = useState(false);
-  const { cleanup, status: connectionStatus } = useWebRTC();
-  
+  const webrtc = useWebRTC();
+  const connectionStatus = webrtc?.status ?? "disconnected";
+
+  const isConnected = connectionStatus === "connected";
+  const isFailed = connectionStatus === "failed";
+  const isConnecting = connectionStatus === "connecting";
+
+  const getHeaderRightText = () => {
+    if (isConnected) return "Connected";
+    if (isFailed) return "Disconnected";
+    if (isConnecting) return "Connecting...";
+    return "Disconnected";
+  };
+
+  const getSyncStatusText = () => {
+    if (isConnected) return "Dashboard Synced";
+    if (isFailed) return "Connection Failed";
+    if (isConnecting) return "Syncing...";
+    return "Disconnected";
+  };
+
+  const getSyncStatusColor = () => {
+    if (isConnected) return "connected";
+    if (isFailed) return "failed";
+    return "syncing";
+  };
+
   const logoScale = useSharedValue(0);
   const logoOpacity = useSharedValue(0);
   const contentOpacity = useSharedValue(0);
@@ -48,14 +80,14 @@ export default function SuccessScreen() {
     logoScale.value = withSpring(1, { damping: 12, stiffness: 100 });
     logoOpacity.value = withTiming(1, { duration: 400 });
     contentOpacity.value = withDelay(300, withTiming(1, { duration: 400 }));
-    
+
     pulseAnim.value = withRepeat(
       withSequence(
         withTiming(1.05, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) })
+        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
-      true
+      true,
     );
   }, []);
 
@@ -71,19 +103,6 @@ export default function SuccessScreen() {
     ],
   }));
 
-  const handleBackToHome = async () => {
-    if (Platform.OS !== "web") {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    cleanup();
-    navigation.reset({
-      index: 0,
-      routes: [{ name: "Home" }],
-    });
-  };
-
-  const isConnected = connectionStatus === "connected";
-
   const handleCopyAddress = async () => {
     if (Platform.OS !== "web") {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -92,7 +111,9 @@ export default function SuccessScreen() {
       await Clipboard.setStringAsync(walletAddress);
       setCopied(true);
       if (Platform.OS !== "web") {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
       }
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
@@ -103,61 +124,41 @@ export default function SuccessScreen() {
   return (
     <View style={styles.container}>
       <Image
-        source={require("../../assets/images/success-bg-pattern.png")}
+        source={require("../../assets/images/success-bg.png")}
         style={styles.bgPattern}
         contentFit="cover"
       />
-      
-      <ScreenHeader rightText="Connected" />
-      
+
+      <Animated.View style={[styles.logoLayer, logoAnimStyle]} pointerEvents="none">
+        <Svg width={88} height={88} viewBox="0 0 88 88" fill="none">
+          <Path
+            d="M28.9229 14.0869C28.92 14.0883 28.9169 14.0894 28.9141 14.0908L43.3379 28.5146L35.9326 35.9199L20.3057 20.293C14.3289 26.2655 10.6319 34.5187 10.6318 43.6357C10.6321 61.8626 25.4079 76.6384 43.6348 76.6387C56.1745 76.6386 67.0792 69.6443 72.6641 59.3447H39.708V48.8721H86.957C84.3699 70.5019 65.9614 87.2704 43.6348 87.2705C19.5361 87.2703 0.000284349 67.7344 0 43.6357C8.83189e-05 27.7834 8.45375 13.9055 21.0986 6.26367L28.9229 14.0869ZM82.6035 23.9834C85.2167 29.1551 86.8314 34.9178 87.1924 41.0176H65.9209L82.6035 23.9834ZM71.877 10.374C74.2536 12.394 76.4122 14.6629 78.3096 17.1426L60.2422 35.5889L53.6436 28.9902L71.877 10.374ZM56.1846 1.83203C59.4205 2.80212 62.4981 4.13888 65.3701 5.79199L48.0898 23.4365L41.4893 16.8359L56.1846 1.83203ZM43.6357 0C44.7231 1.88442e-05 45.8017 0.0389942 46.8691 0.117188L35.9355 11.2822L27.668 3.01465C32.6131 1.06935 38.0001 0 43.6357 0Z"
+            fill="#06B040"
+          />
+        </Svg>
+      </Animated.View>
+
+      <ScreenHeader rightText={getHeaderRightText()} />
+
       <Animated.View style={[styles.titleSection, contentAnimStyle]}>
         <Text style={styles.title}>WALLET CONNECTED</Text>
         <Text style={styles.subtitle}>Session Active</Text>
       </Animated.View>
 
-      <View style={styles.logoSection}>
-        <Animated.View style={[styles.logoContainer, logoAnimStyle]}>
-          <Svg width={120} height={120} viewBox="0 0 110 110">
-            <Circle cx="55" cy="55" r="40" stroke="#22C55E" strokeWidth="3" fill="none" />
-            <Path
-              d="M35 55 A20 20 0 0 1 75 55"
-              stroke="#22C55E"
-              strokeWidth="6"
-              strokeLinecap="round"
-              fill="none"
-            />
-            <Path
-              d="M35 55 A20 20 0 0 0 75 55"
-              stroke="#22C55E"
-              strokeWidth="6"
-              strokeLinecap="round"
-              fill="none"
-            />
-            <Path
-              d="M45 65 L55 78 L65 65"
-              stroke="#22C55E"
-              strokeWidth="6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-            <Path
-              d="M55 20 L55 40"
-              stroke="#22C55E"
-              strokeWidth="5"
-              strokeLinecap="round"
-            />
-          </Svg>
-        </Animated.View>
-      </View>
+      <View style={styles.spacer} />
 
-      <View style={[styles.bottomSection, { paddingBottom: insets.bottom + Spacing.xl }]}>
+      <View
+        style={[
+          styles.bottomSection,
+          { paddingBottom: insets.bottom + Spacing.xl },
+        ]}
+      >
         <Animated.View style={[styles.addressSection, contentAnimStyle]}>
           <Text style={styles.addressLabel}>SOL Wallet Address</Text>
-          
-          <View style={styles.addressBoxOuter}>
-            <View style={styles.addressBoxMiddle}>
-              <View style={styles.addressBoxInner}>
+
+          <View style={styles.addressBoxWrapper}>
+            <View style={styles.addressBoxFrame}>
+              <View style={styles.addressBoxContent}>
                 <Text style={styles.addressText}>{truncatedAddress}</Text>
                 <Pressable
                   style={({ pressed }) => [
@@ -168,33 +169,76 @@ export default function SuccessScreen() {
                   onPress={handleCopyAddress}
                   testID="button-copy-address"
                 >
-                  <Text style={[styles.copyButtonText, copied && styles.copyButtonTextCopied]}>
+                  <Text
+                    style={[
+                      styles.copyButtonText,
+                      copied && styles.copyButtonTextCopied,
+                    ]}
+                  >
                     {copied ? "Copied!" : "Copy"}
                   </Text>
                 </Pressable>
               </View>
             </View>
+
+            <View style={styles.cornerTopLeft}>
+              <Svg
+                width={10}
+                height={10}
+                viewBox="0 0 10 10"
+                fill="none"
+                style={{ transform: [{ scaleX: -1 }] }}
+              >
+                <Path d="M0 0.5H9V9.5" stroke="white" />
+              </Svg>
+            </View>
+            <View style={styles.cornerTopRight}>
+              <Svg width={10} height={10} viewBox="0 0 10 10" fill="none">
+                <Path d="M0 0.5H9V9.5" stroke="white" />
+              </Svg>
+            </View>
+            <View style={styles.cornerBottomLeft}>
+              <Svg
+                width={10}
+                height={10}
+                viewBox="0 0 10 10"
+                fill="none"
+                style={{ transform: [{ scaleX: -1 }, { scaleY: -1 }] }}
+              >
+                <Path d="M0 0.5H9V9.5" stroke="white" />
+              </Svg>
+            </View>
+            <View style={styles.cornerBottomRight}>
+              <Svg
+                width={10}
+                height={10}
+                viewBox="0 0 10 10"
+                fill="none"
+                style={{ transform: [{ scaleY: -1 }] }}
+              >
+                <Path d="M0 0.5H9V9.5" stroke="white" />
+              </Svg>
+            </View>
           </View>
         </Animated.View>
 
-        {isConnected ? (
-          <Animated.View style={[styles.syncStatus, contentAnimStyle]}>
-            <View style={styles.syncDot} />
-            <Text style={styles.syncText}>Dashboard Synced</Text>
-          </Animated.View>
-        ) : null}
-
-        <Animated.View style={contentAnimStyle}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.backToHomeButton,
-              pressed && styles.backToHomeButtonPressed,
+        <Animated.View style={[styles.syncStatus, contentAnimStyle]}>
+          <View
+            style={[
+              styles.syncDot,
+              getSyncStatusColor() === "syncing" && styles.syncDotSyncing,
+              getSyncStatusColor() === "failed" && styles.syncDotFailed,
             ]}
-            onPress={handleBackToHome}
-            testID="button-back-home"
+          />
+          <Text
+            style={[
+              styles.syncText,
+              getSyncStatusColor() === "syncing" && styles.syncTextSyncing,
+              getSyncStatusColor() === "failed" && styles.syncTextFailed,
+            ]}
           >
-            <Text style={styles.backToHomeText}>Back to Home</Text>
-          </Pressable>
+            {getSyncStatusText()}
+          </Text>
         </Animated.View>
       </View>
     </View>
@@ -217,33 +261,39 @@ const styles = StyleSheet.create({
   },
   titleSection: {
     alignItems: "center",
-    marginTop: Spacing["2xl"],
+    marginTop: 40,
   },
   title: {
     fontFamily: "AstroSpace",
     fontSize: 20,
     color: "#FFFFFF",
     textAlign: "center",
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.lg,
   },
   subtitle: {
     fontFamily: Fonts.body,
-    fontSize: 16,
+    fontSize: 14,
     color: "rgba(255, 255, 255, 0.5)",
     textAlign: "center",
   },
-  logoSection: {
-    flex: 1,
+  logoLayer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: "100%",
+    height: "100%",
     alignItems: "center",
     justifyContent: "center",
   },
-  logoContainer: {
-    width: 120,
-    height: 120,
+  spacer: {
+    flex: 1,
   },
   bottomSection: {
-    paddingHorizontal: Spacing.xl,
-    gap: Spacing.xl,
+    paddingHorizontal: 36,
+    marginBottom: 24,
+    gap: 24,
   },
   addressSection: {
     width: "100%",
@@ -254,23 +304,43 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.5)",
     marginBottom: Spacing.sm,
   },
-  addressBoxOuter: {
+  addressBoxWrapper: {
+    position: "relative",
+    padding: 6,
+  },
+  addressBoxFrame: {
     borderWidth: 0.7,
     borderColor: "#484848",
-    padding: 3,
+    padding: 2,
   },
-  addressBoxMiddle: {
-    borderWidth: 0.7,
-    borderColor: "#484848",
-    padding: 3,
-  },
-  addressBoxInner: {
+  addressBoxContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "rgba(255, 255, 255, 0.1)",
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
+    paddingVertical: 3,
+    paddingLeft: 8,
+    paddingRight: 3,
+  },
+  cornerTopLeft: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+  },
+  cornerTopRight: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+  },
+  cornerBottomLeft: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+  },
+  cornerBottomRight: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
   },
   addressText: {
     fontFamily: Fonts.body,
@@ -280,8 +350,8 @@ const styles = StyleSheet.create({
   },
   copyButton: {
     backgroundColor: "#D9D9D9",
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
   },
   copyButtonPressed: {
     backgroundColor: "#BBBBBB",
@@ -310,25 +380,22 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: "#06B040",
   },
+  syncDotSyncing: {
+    backgroundColor: "#F59E0B",
+  },
+  syncDotFailed: {
+    backgroundColor: "#EF4444",
+  },
   syncText: {
     fontFamily: Fonts.body,
-    fontSize: 16,
-    color: "#06B040",
-  },
-  backToHomeButton: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
-    paddingVertical: Spacing.lg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backToHomeButtonPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-  },
-  backToHomeText: {
-    fontFamily: Fonts.body,
     fontSize: 14,
-    color: "#FFFFFF",
+    color: "#06B040",
+    textDecorationLine: "none",
+  },
+  syncTextSyncing: {
+    color: "#F59E0B",
+  },
+  syncTextFailed: {
+    color: "#EF4444",
   },
 });
