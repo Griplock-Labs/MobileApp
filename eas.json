@@ -8,26 +8,17 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "WALLET_DERIVATION_SALT": "@wallet_derivation_salt"
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "WALLET_DERIVATION_SALT": "@wallet_derivation_salt"
       }
     },
     "production": {
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "WALLET_DERIVATION_SALT": "@wallet_derivation_salt"
       }
     }
   },

@@ -1,89 +1,53 @@
-# GRIPLOCK Mobile App
+# GRIPLOCK Mobile
 
-A React Native + Expo mobile companion app for the GRIPLOCK ephemeral crypto wallet system.
+Mobile companion app for the GRIPLOCK ephemeral crypto wallet system.
+
+## Download
+
+### APK v1.0 Beta
+
+[Download APK](https://expo.dev/artifacts/eas/bV3TdeHmrS8yz6YYHAmWmt.apk)
 
 ## Overview
 
-GRIPLOCK enables secure, ephemeral Solana wallet creation through:
-1. Scan QR code from GRIPLOCK dashboard
-2. Tap your NFC card
-3. Enter 6-digit PIN
-4. Wallet derived cryptographically (exists only in memory)
+GRIPLOCK is a fully decentralized ephemeral crypto wallet system. Users scan QR codes from the GRIPLOCK dashboard, tap their NFC card, and enter a PIN to derive a wallet address cryptographically. The wallet exists only in memory during the active session.
+
+## Features
+
+- QR code scanning from GRIPLOCK dashboard
+- NFC card reading (requires physical hardware)
+- 6-digit PIN entry with attempt limiting
+- End-to-end encrypted communication (X25519 + AES-GCM)
+- Cryptographic wallet derivation (SHA256)
+- Dark cyberpunk aesthetic
 
 ## Tech Stack
 
-- **Framework**: React Native + Expo (Development Build required for NFC)
-- **Styling**: StyleSheet with cyberpunk/dark theme
-- **Navigation**: React Navigation 7+
-- **Crypto**: @solana/web3.js, @noble/curves, @noble/ciphers, @noble/hashes
-
-## Getting Started
-
-### Install Dependencies
-
-```bash
-npm install
-```
-
-### Configure Secrets
-
-1. Copy `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Set your wallet derivation salt in `.env`:
-   ```
-   WALLET_DERIVATION_SALT=your_secret_salt_value_here
-   ```
-
-### Development (Expo Go - Limited)
-
-```bash
-npx expo start
-```
-
-Note: NFC features require a native build.
-
-### Build APK with NFC Support
-
-```bash
-# Login to Expo
-npx eas-cli login
-
-# Set EAS secret for wallet derivation salt
-eas secret:create --name wallet_derivation_salt --value YOUR_SECRET_SALT
-
-# Build development APK
-npx eas-cli build --platform android --profile development
-
-# Build production APK
-npx eas-cli build --platform android --profile production
-```
-
-## Project Structure
-
-```
-client/
-├── App.tsx                 # Root app with fonts and navigation
-├── components/             # Reusable UI components
-├── constants/theme.ts      # Colors, typography, spacing
-├── context/                # WebSocket connection state
-├── hooks/                  # Custom hooks
-├── lib/                    # Crypto and networking utilities
-├── navigation/             # Stack navigator
-└── screens/                # App screens (Home, QR, NFC, PIN, Success)
-
-assets/images/              # App icons and illustrations
-```
+- React Native + Expo
+- React Navigation 7+
+- @noble/curves, @noble/ciphers, @noble/hashes for cryptography
+- WebSocket for real-time communication
 
 ## Security
 
 - No persistent wallet storage (ephemeral by design)
-- End-to-end encryption using X25519 + AES-GCM
-- Solana keypair derived from NFC data + PIN using Ed25519
-- Session clears when returning to home screen
-- Real NFC hardware required (no simulation mode)
+- Max 5 PIN attempts per session
+- Exponential backoff lockout after failed attempts
+- Fully client-side - no backend stores sensitive data
+
+## How It Works
+
+1. Scan QR code from dashboard (contains WebSocket URL)
+2. Tap GRIPLOCK NFC card
+3. Enter 6-digit PIN
+4. Wallet derived locally: `SHA256(griplock_{nfc_id}:{pin})`
+5. Wallet address sent encrypted to dashboard
+
+## Requirements
+
+- Android device with NFC support
+- Physical GRIPLOCK NFC card
+- Connection to GRIPLOCK dashboard
 
 ## License
 

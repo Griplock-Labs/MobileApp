@@ -5,6 +5,8 @@ import {
   createInitialSession,
   initializeWebRTCFromQR,
   sendEncryptedWalletData,
+  sendWalletAddress as sendWalletAddressRaw,
+  sendAttemptUpdate,
   cleanupSession,
 } from '@/lib/webrtc';
 
@@ -16,8 +18,10 @@ interface WebRTCContextValue {
   walletAddress: string | null;
   initializeFromQR: (qrData: string) => Promise<void>;
   setNfcData: (data: string) => void;
-  sendWalletData: (pin: string) => boolean;
+  sendWalletData: (pin: string, nfcDataOverride?: string) => boolean;
+  sendWalletAddress: (address: string) => boolean;
   setWalletAddress: (address: string) => void;
+  notifyAttemptUpdate: (attempts: number, maxAttempts: number, isLockedOut: boolean) => boolean;
   cleanup: () => void;
   lastMessage: unknown;
 }
@@ -43,16 +47,24 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const initializeFromQR = useCallback(async (qrData: string) => {
+    console.log('[WebRTC] initializeFromQR called');
     try {
       const newSession = await initializeWebRTCFromQR(
         qrData,
-        (newStatus) => setStatus(newStatus),
-        (message) => setLastMessage(message)
+        (newStatus) => {
+          console.log('[WebRTC] Status changed to:', newStatus);
+          setStatus(newStatus);
+        },
+        (message) => {
+          console.log('[WebRTC] Message received:', JSON.stringify(message));
+          setLastMessage(message);
+        }
       );
       sessionRef.current = newSession;
       setCompressedAnswer(newSession.compressedAnswer);
+      console.log('[WebRTC] Session initialized, hasSecret:', !!newSession.sharedSecret);
     } catch (error) {
-      console.error('Failed to initialize WebRTC:', error);
+      console.error('[WebRTC] Failed to initialize:', error);
       sessionRef.current = createInitialSession();
       setStatus('disconnected');
       setCompressedAnswer(null);
@@ -64,16 +76,32 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
     setNfcDataState(data);
   }, []);
 
-  const sendWalletData = useCallback((pin: string): boolean => {
-    if (!nfcData) {
-      console.error('No NFC data available');
+  const sendWalletData = useCallback((pin: string, nfcDataOverride?: string): boolean => {
+    const data = nfcDataOverride || nfcData;
+    console.log('[sendWalletData] Called with data:', data, 'status:', status);
+    console.log('[sendWalletData] Session:', { 
+      hasWebsocket: !!sessionRef.current.websocket,
+      wsState: sessionRef.current.websocket?.readyState,
+      hasSecret: !!sessionRef.current.sharedSecret,
+      hasKeyPair: !!sessionRef.current.keyPair
+    });
+    if (!data) {
+      console.log('[sendWalletData] No NFC data available');
       return false;
     }
-    return sendEncryptedWalletData(sessionRef.current, nfcData, pin);
-  }, [nfcData]);
+    return sendEncryptedWalletData(sessionRef.current, data, pin);
+  }, [nfcData, status]);
 
   const setWalletAddress = useCallback((address: string) => {
     setWalletAddressState(address);
+  }, []);
+
+  const sendWalletAddress = useCallback((address: string): boolean => {
+    return sendWalletAddressRaw(sessionRef.current, address);
+  }, []);
+
+  const notifyAttemptUpdate = useCallback((attempts: number, maxAttempts: number, isLockedOut: boolean): boolean => {
+    return sendAttemptUpdate(sessionRef.current, attempts, maxAttempts, isLockedOut);
   }, []);
 
   const cleanup = cleanupInternal;
@@ -89,7 +117,9 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
         initializeFromQR,
         setNfcData,
         sendWalletData,
+        sendWalletAddress,
         setWalletAddress,
+        notifyAttemptUpdate,
         cleanup,
         lastMessage,
       }}

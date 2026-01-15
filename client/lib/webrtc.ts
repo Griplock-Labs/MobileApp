@@ -3,10 +3,12 @@ import {
   generateKeyPair,
   deriveSharedSecret,
   encryptPayload,
+  encryptWalletAddress,
   clearSensitiveData,
   bytesToHex,
   type QROfferData,
   type EncryptedPayload,
+  type WalletConnectedPayload,
   type KeyPair,
 } from './crypto';
 
@@ -20,6 +22,7 @@ export interface WebRTCSession {
   sessionId: string | null;
   status: ConnectionStatus;
   compressedAnswer: string | null;
+  walletSent: boolean;
 }
 
 export function createInitialSession(): WebRTCSession {
@@ -31,6 +34,7 @@ export function createInitialSession(): WebRTCSession {
     sessionId: null,
     status: 'disconnected',
     compressedAnswer: null,
+    walletSent: false,
   };
 }
 
@@ -47,14 +51,6 @@ export async function initializeWebRTCFromQR(
 
     const offerData: QROfferData = decompressOffer(qrData);
     
-    // Debug logging
-    console.log('=== QR Data Debug ===');
-    console.log('Raw QR data length:', qrData.length);
-    console.log('Parsed offer data:', JSON.stringify(offerData, null, 2));
-    console.log('wsUrl from QR:', offerData.wsUrl || 'NOT FOUND');
-    console.log('sessionId:', offerData.sessionId);
-    console.log('pk:', offerData.pk?.substring(0, 20) + '...');
-    
     session.dashboardPublicKey = offerData.pk;
     session.sessionId = offerData.sessionId;
 
@@ -66,10 +62,8 @@ export async function initializeWebRTCFromQR(
     let wsUrl: string;
     if (offerData.wsUrl) {
       wsUrl = offerData.wsUrl;
-      console.log('Using wsUrl from QR:', wsUrl);
     } else {
       const host = process.env.EXPO_PUBLIC_DOMAIN;
-      console.log('wsUrl NOT in QR, falling back to EXPO_PUBLIC_DOMAIN:', host);
       if (!host) {
         throw new Error('Server URL not found in QR code. Please scan a new QR code from the dashboard.');
       }
@@ -77,60 +71,62 @@ export async function initializeWebRTCFromQR(
       wsUrl = `${wsProtocol}://${host}/ws`;
     }
 
-    console.log('Final WebSocket URL:', wsUrl);
+    console.log('[WS] Connecting to:', wsUrl);
     session.websocket = new WebSocket(wsUrl);
 
     session.websocket.onopen = () => {
-      console.log('WebSocket connected');
-      
+      console.log('[WS] Connection opened');
       const registerMsg = {
         type: 'register',
         role: 'mobile',
         sessionId: offerData.sessionId
       };
-      
-      console.log('Sending register:', JSON.stringify(registerMsg));
+      console.log('[WS] Sending register:', JSON.stringify(registerMsg));
       session.websocket?.send(JSON.stringify(registerMsg));
     };
 
     session.websocket.onmessage = (event) => {
-      console.log('WS received:', event.data);
-      
+      console.log('[WS] Raw message received:', event.data);
       try {
         const msg = JSON.parse(event.data);
+        console.log('[WS] Parsed message:', JSON.stringify(msg));
         
         if (msg.type === 'registered' || (msg.type === 'ack' && msg.received === 'register')) {
-          console.log('Registered to session, ready for NFC tap');
+          console.log('[WS] Registration confirmed - setting status to connected');
           session.status = 'connected';
           onStatusChange('connected');
         }
         
-        if (msg.type === 'ice-candidate') {
-          console.log('ICE candidate received from dashboard');
-        }
-        
         if (msg.type === 'error') {
-          console.error('Server error:', msg.message);
+          console.log('[WS] Error message received');
           session.status = 'failed';
           onStatusChange('failed');
         }
         
         onMessage(msg);
       } catch {
-        console.log('WS received non-JSON:', event.data);
+        console.log('[WS] Failed to parse message');
         onMessage(event.data);
       }
     };
 
-    session.websocket.onerror = (e) => {
-      console.error('WS error:', e);
-      session.status = 'failed';
-      onStatusChange('failed');
+    session.websocket.onerror = (err) => {
+      console.log('[WS] Error occurred:', err);
+      if (!session.walletSent) {
+        session.status = 'failed';
+        onStatusChange('failed');
+      } else {
+        console.log('[WS] Error after wallet sent - ignoring (session complete)');
+      }
     };
 
-    session.websocket.onclose = (e) => {
-      console.log('WS closed:', e.code, e.reason);
-      if (session.status !== 'failed') {
+    session.websocket.onclose = (event) => {
+      console.log('[WS] Connection closed, code:', event.code, 'reason:', event.reason);
+      if (session.walletSent) {
+        console.log('[WS] Connection closed after wallet sent - session complete');
+        session.status = 'disconnected';
+        onStatusChange('disconnected');
+      } else if (session.status !== 'failed') {
         session.status = 'disconnected';
         onStatusChange('disconnected');
       }
@@ -160,7 +156,6 @@ export async function initializeWebRTCFromQR(
     cleanupSession(session);
     session.status = 'failed';
     onStatusChange('failed');
-    console.error('WebSocket initialization error:', error);
     throw error;
   }
 }
@@ -171,12 +166,12 @@ export function sendEncryptedWalletData(
   pin: string
 ): boolean {
   if (!session.websocket || session.websocket.readyState !== WebSocket.OPEN) {
-    console.error('WebSocket not ready');
+    console.log('[sendWalletData] WebSocket not ready:', session.websocket?.readyState);
     return false;
   }
 
   if (!session.sharedSecret || !session.keyPair) {
-    console.error('Missing encryption keys');
+    console.log('[sendWalletData] Missing keys:', { hasSecret: !!session.sharedSecret, hasKeyPair: !!session.keyPair });
     return false;
   }
 
@@ -193,6 +188,61 @@ export function sendEncryptedWalletData(
   session.keyPair = null;
   session.dashboardPublicKey = null;
 
+  return true;
+}
+
+export function sendWalletAddress(
+  session: WebRTCSession,
+  walletAddress: string
+): boolean {
+  if (!session.websocket || session.websocket.readyState !== WebSocket.OPEN) {
+    console.log('[sendWalletAddress] WebSocket not ready:', session.websocket?.readyState);
+    return false;
+  }
+
+  const message = {
+    type: 'wallet_connected',
+    address: walletAddress,
+  };
+
+  console.log('[sendWalletAddress] Sending wallet_connected message:', message);
+  session.websocket.send(JSON.stringify(message));
+
+  session.walletSent = true;
+
+  if (session.sharedSecret) {
+    clearSensitiveData(session.sharedSecret);
+    session.sharedSecret = null;
+  }
+  if (session.keyPair) {
+    clearSensitiveData(session.keyPair.privateKey);
+    session.keyPair = null;
+  }
+  session.dashboardPublicKey = null;
+
+  return true;
+}
+
+export function sendAttemptUpdate(
+  session: WebRTCSession,
+  attempts: number,
+  maxAttempts: number,
+  isLockedOut: boolean
+): boolean {
+  if (!session.websocket || session.websocket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+
+  const message = {
+    type: 'attempt_update',
+    attempts,
+    maxAttempts,
+    remaining: maxAttempts - attempts,
+    isLockedOut,
+    timestamp: Date.now(),
+  };
+
+  session.websocket.send(JSON.stringify(message));
   return true;
 }
 

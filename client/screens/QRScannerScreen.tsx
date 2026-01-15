@@ -201,23 +201,29 @@ export default function QRScannerScreen() {
     setScanned(true);
     setConnectionError(null);
 
+    console.log('[QR] Scanned data:', data);
+
     if (Platform.OS !== "web") {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
     if (!isGriplockQR(data)) {
+      console.log('[QR] Invalid QR - not griplock format');
       setConnectionError("Invalid QR code. Please scan a GRIPLOCK dashboard QR code.");
       setScanned(false);
       return;
     }
 
     setIsConnecting(true);
+    console.log('[QR] Initializing WebRTC...');
     try {
       await initializeFromQR(data);
+      console.log('[QR] WebRTC initialized successfully');
       const sessionId = route.params.sessionId || generateSessionId();
+      console.log('[QR] Navigating to NFCReader with sessionId:', sessionId);
       navigation.replace("NFCReader", { sessionId });
     } catch (error) {
-      console.error("WebRTC connection failed:", error);
+      console.error("[QR] WebRTC connection failed:", error);
       cleanup();
       setConnectionError("Failed to connect. Please try scanning again.");
       setScanned(false);

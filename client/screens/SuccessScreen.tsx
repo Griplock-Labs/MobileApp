@@ -47,6 +47,7 @@ export default function SuccessScreen() {
   const isConnected = connectionStatus === "connected";
   const isFailed = connectionStatus === "failed";
   const isConnecting = connectionStatus === "connecting";
+  const isDisconnected = connectionStatus === "disconnected" || isFailed;
 
   const getHeaderRightText = () => {
     if (isConnected) return "Connected";
@@ -124,7 +125,11 @@ export default function SuccessScreen() {
   return (
     <View style={styles.container}>
       <Image
-        source={require("../../assets/images/success-bg.png")}
+        key={isDisconnected ? "bg-disconnected" : "bg-connected"}
+        source={isDisconnected 
+          ? require("../../assets/images/bg-disconnected.png")
+          : require("../../assets/images/success-bg.png")
+        }
         style={styles.bgPattern}
         contentFit="cover"
       />
@@ -133,7 +138,7 @@ export default function SuccessScreen() {
         <Svg width={88} height={88} viewBox="0 0 88 88" fill="none">
           <Path
             d="M28.9229 14.0869C28.92 14.0883 28.9169 14.0894 28.9141 14.0908L43.3379 28.5146L35.9326 35.9199L20.3057 20.293C14.3289 26.2655 10.6319 34.5187 10.6318 43.6357C10.6321 61.8626 25.4079 76.6384 43.6348 76.6387C56.1745 76.6386 67.0792 69.6443 72.6641 59.3447H39.708V48.8721H86.957C84.3699 70.5019 65.9614 87.2704 43.6348 87.2705C19.5361 87.2703 0.000284349 67.7344 0 43.6357C8.83189e-05 27.7834 8.45375 13.9055 21.0986 6.26367L28.9229 14.0869ZM82.6035 23.9834C85.2167 29.1551 86.8314 34.9178 87.1924 41.0176H65.9209L82.6035 23.9834ZM71.877 10.374C74.2536 12.394 76.4122 14.6629 78.3096 17.1426L60.2422 35.5889L53.6436 28.9902L71.877 10.374ZM56.1846 1.83203C59.4205 2.80212 62.4981 4.13888 65.3701 5.79199L48.0898 23.4365L41.4893 16.8359L56.1846 1.83203ZM43.6357 0C44.7231 1.88442e-05 45.8017 0.0389942 46.8691 0.117188L35.9355 11.2822L27.668 3.01465C32.6131 1.06935 38.0001 0 43.6357 0Z"
-            fill="#06B040"
+            fill={isDisconnected ? "#EF8300" : "#06B040"}
           />
         </Svg>
       </Animated.View>

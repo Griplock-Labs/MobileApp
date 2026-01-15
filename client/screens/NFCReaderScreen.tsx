@@ -31,7 +31,6 @@ if (Platform.OS !== "web") {
     NfcManager = nfcModule.default;
     NfcTech = nfcModule.NfcTech;
   } catch (e) {
-    console.log("NFC module not available (running in Expo Go)");
   }
 }
 
@@ -156,7 +155,6 @@ export default function NFCReaderScreen() {
         setNfcEnabled(false);
       }
     } catch (e) {
-      console.log("NFC check failed:", e);
       setNfcSupported(false);
       setNfcEnabled(false);
     }
@@ -167,7 +165,6 @@ export default function NFCReaderScreen() {
       try {
         await NfcManager.goToNfcSetting();
       } catch (e) {
-        console.log("Cannot open NFC settings:", e);
       }
     }
   };
@@ -181,7 +178,6 @@ export default function NFCReaderScreen() {
           startNfcScan();
         }
       } catch (e) {
-        console.log("NFC recheck failed:", e);
       }
     }
   };
@@ -216,6 +212,7 @@ export default function NFCReaderScreen() {
       const tag = await NfcManager.getTag();
       
       if (tag) {
+        console.log('[NFC] Tag detected:', JSON.stringify(tag));
         if (Platform.OS !== "web") {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
@@ -224,12 +221,16 @@ export default function NFCReaderScreen() {
         const tagId = rawTagId.replace(/[^0-9a-f]/gi, "").toLowerCase();
         const nfcDataString = `griplock_${tagId}`;
         
+        console.log('[NFC] Processed NFC data:', nfcDataString);
+        console.log('[NFC] Connection status before navigate:', connectionStatus);
+        
         setScanStatus("Card detected!");
         setNfcData(nfcDataString);
         
         await NfcManager.cancelTechnologyRequest();
         scanningRef.current = false;
         
+        console.log('[NFC] Navigating to PINInput with sessionId:', route.params?.sessionId);
         navigation.replace("PINInput", {
           sessionId: route.params?.sessionId || "",
           nfcData: nfcDataString,

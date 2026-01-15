@@ -5,7 +5,6 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { gcm } from '@noble/ciphers/aes.js';
 import { getRandomValues } from 'expo-crypto';
 import { Keypair } from '@solana/web3.js';
-import Constants from 'expo-constants';
 
 export interface QROfferData {
   type: string;
@@ -105,23 +104,40 @@ export function encryptPayload(
   };
 }
 
+export interface WalletConnectedPayload {
+  type: 'wallet_connected';
+  payload: {
+    nonce: string;
+    ciphertext: string;
+    senderPublicKey: string;
+  };
+}
+
+export function encryptWalletAddress(
+  sharedSecret: Uint8Array,
+  walletAddress: string,
+  senderPublicKey: Uint8Array
+): WalletConnectedPayload {
+  const payload = JSON.stringify({ walletAddress });
+  const nonce = new Uint8Array(12);
+  getRandomValues(nonce);
+  const aes = gcm(sharedSecret, nonce);
+  const ciphertext = aes.encrypt(new TextEncoder().encode(payload));
+
+  return {
+    type: 'wallet_connected',
+    payload: {
+      nonce: bytesToHex(nonce),
+      ciphertext: bytesToHex(ciphertext),
+      senderPublicKey: bytesToHex(senderPublicKey),
+    },
+  };
+}
+
 export function clearSensitiveData(...arrays: Uint8Array[]): void {
   for (const arr of arrays) {
     arr.fill(0);
   }
-}
-
-function getWalletSalt(): string {
-  const expoConfig = Constants.expoConfig as { extra?: { walletDerivationSalt?: string } } | undefined;
-  const manifest = Constants.manifest as { extra?: { walletDerivationSalt?: string } } | undefined;
-  const manifest2 = Constants.manifest2 as { extra?: { expoClient?: { extra?: { walletDerivationSalt?: string } } } } | undefined;
-  
-  const salt = 
-    expoConfig?.extra?.walletDerivationSalt ||
-    manifest?.extra?.walletDerivationSalt ||
-    manifest2?.extra?.expoClient?.extra?.walletDerivationSalt;
-  
-  return salt || '';
 }
 
 export function normalizeNfcTagId(tagId: string): string {
@@ -129,13 +145,8 @@ export function normalizeNfcTagId(tagId: string): string {
 }
 
 export function deriveSolanaAddress(nfcData: string, pin: string): string {
-  const salt = getWalletSalt();
-  if (!salt) {
-    throw new Error('WALLET_DERIVATION_SALT not configured. Check .env or EAS secrets.');
-  }
   const normalizedNfc = normalizeNfcTagId(nfcData);
-  const nfcWithPrefix = `griplock_${normalizedNfc}`;
-  const combined = `${salt}:${nfcWithPrefix}:${pin}`;
+  const combined = `griplock_${normalizedNfc}:${pin}`;
   const seed = sha256(new TextEncoder().encode(combined));
   const keypair = Keypair.fromSeed(seed);
   return keypair.publicKey.toBase58();
