@@ -356,6 +356,16 @@ export default function QRScannerScreen() {
           <Text style={styles.permissionText}>
             Connecting to your GRIPLOCK dashboard...
           </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.cancelButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={handleRetry}
+            testID="button-cancel-connection"
+          >
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -621,5 +631,20 @@ const styles = StyleSheet.create({
     borderRadius: 35,
     justifyContent: "center",
     alignItems: "center",
+  },
+  cancelButton: {
+    marginTop: Spacing.xl,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing["2xl"],
+    borderWidth: 1,
+    borderColor: Colors.dark.textSecondary,
+    borderRadius: BorderRadius.full,
+  },
+  cancelButtonText: {
+    fontFamily: Fonts.circular.book,
+    fontSize: Typography.caption.fontSize,
+    color: Colors.dark.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
 });

@@ -4,17 +4,24 @@ import {
   ConnectionStatus,
   createInitialSession,
   initializeWebRTCFromQR,
-  sendEncryptedWalletData,
   sendWalletAddress as sendWalletAddressRaw,
   sendAttemptUpdate,
   sendSignResponse as sendSignResponseRaw,
   cleanupSession,
+  sendDisconnect as sendDisconnectRaw,
 } from '@/lib/webrtc';
 import { Keypair } from '@solana/web3.js';
+
+export type DisconnectReason = 'peer_closed' | 'connection_failed' | 'data_channel_closed' | 'user_initiated' | 'dashboard_disconnected';
 
 export interface DashboardDisconnectInfo {
   reason: 'user_logout' | 'session_expired' | null;
   address: string | null;
+  timestamp: number | null;
+}
+
+export interface PeerDisconnectInfo {
+  reason: DisconnectReason | null;
   timestamp: number | null;
 }
 
@@ -30,10 +37,10 @@ export interface SignRequest {
 interface WebRTCContextValue {
   session: WebRTCSession;
   status: ConnectionStatus;
-  compressedAnswer: string | null;
   nfcData: string | null;
   walletAddress: string | null;
   dashboardDisconnect: DashboardDisconnectInfo;
+  peerDisconnect: PeerDisconnectInfo;
   pendingSignRequest: SignRequest | null;
   solanaKeypair: Keypair | null;
   initializeFromQR: (qrData: string) => Promise<void>;
@@ -42,10 +49,11 @@ interface WebRTCContextValue {
   sendWalletAddress: (address: string) => boolean;
   setWalletAddress: (address: string) => void;
   setSolanaKeypair: (keypair: Keypair) => void;
-  notifyAttemptUpdate: (attempts: number, maxAttempts: number, isLockedOut: boolean) => boolean;
+  notifyAttemptUpdate: (attempts: number, maxAttempts: number, isLockedOut: boolean, lockoutEndTime?: number) => boolean;
   sendSignResponse: (action: 'compress' | 'decompress', success: boolean, signature: string | null, error: string | null) => boolean;
+  sendDisconnect: () => boolean;
   clearPendingSignRequest: () => void;
-  cleanup: () => void;
+  cleanup: (sendDisconnectMsg?: boolean) => void;
   lastMessage: unknown;
 }
 
@@ -54,7 +62,6 @@ const WebRTCContext = createContext<WebRTCContextValue | null>(null);
 export function WebRTCProvider({ children }: { children: React.ReactNode }) {
   const sessionRef = useRef<WebRTCSession>(createInitialSession());
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
-  const [compressedAnswer, setCompressedAnswer] = useState<string | null>(null);
   const [nfcData, setNfcDataState] = useState<string | null>(null);
   const [walletAddress, setWalletAddressState] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState<unknown>(null);
@@ -65,16 +72,20 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
   });
   const [pendingSignRequest, setPendingSignRequest] = useState<SignRequest | null>(null);
   const [solanaKeypair, setSolanaKeypairState] = useState<Keypair | null>(null);
+  const [peerDisconnect, setPeerDisconnect] = useState<PeerDisconnectInfo>({
+    reason: null,
+    timestamp: null,
+  });
 
-  const cleanupInternal = useCallback(() => {
-    cleanupSession(sessionRef.current);
+  const cleanupInternal = useCallback((sendDisconnectMsg = true) => {
+    cleanupSession(sessionRef.current, sendDisconnectMsg);
     sessionRef.current = createInitialSession();
     setStatus('disconnected');
-    setCompressedAnswer(null);
     setNfcDataState(null);
     setWalletAddressState(null);
     setLastMessage(null);
     setDashboardDisconnect({ reason: null, address: null, timestamp: null });
+    setPeerDisconnect({ reason: null, timestamp: null });
     setPendingSignRequest(null);
     setSolanaKeypairState(null);
   }, []);
@@ -82,6 +93,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
   const initializeFromQR = useCallback(async (qrData: string) => {
     console.log('[WebRTC] initializeFromQR called');
     setDashboardDisconnect({ reason: null, address: null, timestamp: null });
+    setPeerDisconnect({ reason: null, timestamp: null });
     try {
       const newSession = await initializeWebRTCFromQR(
         qrData,
@@ -95,12 +107,16 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
           
           if (typeof message === 'object' && message !== null && 'type' in message) {
             const msg = message as { type: string; reason?: string; address?: string; timestamp?: number };
-            if (msg.type === 'dashboard_disconnected') {
-              console.log('[WebRTC] Dashboard disconnected:', msg.reason);
+            if (msg.type === 'dashboard_disconnected' || msg.type === 'disconnect') {
+              console.log('[WebRTC] Dashboard/peer disconnected:', msg.reason);
               setDashboardDisconnect({
                 reason: (msg.reason as 'user_logout' | 'session_expired') || null,
                 address: msg.address || null,
                 timestamp: msg.timestamp || null,
+              });
+              setPeerDisconnect({
+                reason: 'dashboard_disconnected',
+                timestamp: Date.now(),
               });
             }
             
@@ -110,16 +126,21 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
               setPendingSignRequest(signReq);
             }
           }
+        },
+        (reason) => {
+          console.log('[WebRTC] Peer disconnected, reason:', reason);
+          setPeerDisconnect({
+            reason,
+            timestamp: Date.now(),
+          });
         }
       );
       sessionRef.current = newSession;
-      setCompressedAnswer(newSession.compressedAnswer);
-      console.log('[WebRTC] Session initialized, hasSecret:', !!newSession.sharedSecret);
+      console.log('[WebRTC] Session initialized successfully');
     } catch (error) {
       console.error('[WebRTC] Failed to initialize:', error);
       sessionRef.current = createInitialSession();
       setStatus('disconnected');
-      setCompressedAnswer(null);
       throw error;
     }
   }, []);
@@ -131,17 +152,12 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
   const sendWalletData = useCallback((pin: string, nfcDataOverride?: string): boolean => {
     const data = nfcDataOverride || nfcData;
     console.log('[sendWalletData] Called with data:', data, 'status:', status);
-    console.log('[sendWalletData] Session:', { 
-      hasWebsocket: !!sessionRef.current.websocket,
-      wsState: sessionRef.current.websocket?.readyState,
-      hasSecret: !!sessionRef.current.sharedSecret,
-      hasKeyPair: !!sessionRef.current.keyPair
-    });
     if (!data) {
       console.log('[sendWalletData] No NFC data available');
       return false;
     }
-    return sendEncryptedWalletData(sessionRef.current, data, pin);
+    console.log('[sendWalletData] NFC data set, ready for wallet derivation');
+    return true;
   }, [nfcData, status]);
 
   const setWalletAddress = useCallback((address: string) => {
@@ -152,8 +168,8 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
     return sendWalletAddressRaw(sessionRef.current, address);
   }, []);
 
-  const notifyAttemptUpdate = useCallback((attempts: number, maxAttempts: number, isLockedOut: boolean): boolean => {
-    return sendAttemptUpdate(sessionRef.current, attempts, maxAttempts, isLockedOut);
+  const notifyAttemptUpdate = useCallback((attempts: number, maxAttempts: number, isLockedOut: boolean, lockoutEndTime?: number): boolean => {
+    return sendAttemptUpdate(sessionRef.current, attempts, maxAttempts, isLockedOut, lockoutEndTime);
   }, []);
 
   const setSolanaKeypair = useCallback((keypair: Keypair) => {
@@ -173,6 +189,10 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
     setPendingSignRequest(null);
   }, []);
 
+  const sendDisconnect = useCallback((): boolean => {
+    return sendDisconnectRaw(sessionRef.current);
+  }, []);
+
   const cleanup = cleanupInternal;
 
   return (
@@ -180,10 +200,10 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
       value={{
         session: sessionRef.current,
         status,
-        compressedAnswer,
         nfcData,
         walletAddress,
         dashboardDisconnect,
+        peerDisconnect,
         pendingSignRequest,
         solanaKeypair,
         initializeFromQR,
@@ -194,6 +214,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
         setSolanaKeypair,
         notifyAttemptUpdate,
         sendSignResponse,
+        sendDisconnect,
         clearPendingSignRequest,
         cleanup,
         lastMessage,

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Platform,
   Dimensions,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -118,17 +119,33 @@ export default function HomeScreen() {
   const walletAddress = webrtc?.walletAddress;
   const connectionStatus = webrtc?.status ?? "disconnected";
   const dashboardDisconnect = webrtc?.dashboardDisconnect;
+  const peerDisconnect = webrtc?.peerDisconnect;
   const pendingSignRequest = webrtc?.pendingSignRequest;
   const solanaKeypair = webrtc?.solanaKeypair;
   const sendSignResponse = webrtc?.sendSignResponse;
   const clearPendingSignRequest = webrtc?.clearPendingSignRequest;
   const cleanup = webrtc?.cleanup;
 
+  const [copied, setCopied] = useState(false);
+  const cleanupRef = useRef(cleanup);
+  cleanupRef.current = cleanup;
+
   const isConnected = connectionStatus === "connected" && !!walletAddress;
   const isFailed = connectionStatus === "failed";
   const isConnecting = connectionStatus === "connecting";
   const isDashboardDisconnected = dashboardDisconnect?.reason !== null;
-  const shouldShowConnectedUI = isConnected && !isDashboardDisconnected;
+  const isPeerDisconnected = peerDisconnect?.reason !== null;
+  const shouldShowConnectedUI = isConnected && !isDashboardDisconnected && !isPeerDisconnected;
+
+  useEffect(() => {
+    if (isPeerDisconnected && walletAddress) {
+      console.log('[HomeScreen] Peer disconnected, cleaning up session');
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
+      cleanupRef.current?.(false);
+    }
+  }, [isPeerDisconnected, walletAddress]);
 
   useEffect(() => {
     pulseAnim.value = withRepeat(
@@ -163,6 +180,20 @@ export default function HomeScreen() {
     }
     cleanup?.();
   };
+
+  const handleCopyAddress = async () => {
+    if (!walletAddress) return;
+    await Clipboard.setStringAsync(walletAddress);
+    setCopied(true);
+    if (Platform.OS !== "web") {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const truncatedAddress = walletAddress
+    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+    : "";
 
   const handleSignConfirm = async () => {
     if (!pendingSignRequest || !solanaKeypair || !sendSignResponse) {
@@ -258,16 +289,75 @@ export default function HomeScreen() {
           <View style={styles.centerContent}>
             <View style={styles.textContainer}>
               <Text style={styles.tagline}>Ephemeral Wallet System</Text>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.disconnectButtonSmall,
-                  pressed && styles.disconnectButtonSmallPressed,
-                ]}
-                onPress={handleDisconnect}
-                testID="button-disconnect"
-              >
-                <Text style={styles.disconnectButtonSmallText}>Disconnect</Text>
-              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.addressSection}>
+            <Text style={styles.addressLabel}>SOL Wallet Address</Text>
+
+            <View style={styles.addressBoxWrapper}>
+              <View style={styles.addressBoxFrame}>
+                <View style={styles.addressBoxContent}>
+                  <Text style={styles.addressText}>{truncatedAddress}</Text>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.copyButton,
+                      pressed && styles.copyButtonPressed,
+                      copied && styles.copyButtonCopied,
+                    ]}
+                    onPress={handleCopyAddress}
+                    testID="button-copy-address"
+                  >
+                    <Text
+                      style={[
+                        styles.copyButtonText,
+                        copied && styles.copyButtonTextCopied,
+                      ]}
+                    >
+                      {copied ? "Copied!" : "Copy"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.cornerTopLeft}>
+                <Svg
+                  width={10}
+                  height={10}
+                  viewBox="0 0 10 10"
+                  fill="none"
+                  style={{ transform: [{ scaleX: -1 }] }}
+                >
+                  <Path d="M0 0.5H9V9.5" stroke="white" />
+                </Svg>
+              </View>
+              <View style={styles.cornerTopRight}>
+                <Svg width={10} height={10} viewBox="0 0 10 10" fill="none">
+                  <Path d="M0 0.5H9V9.5" stroke="white" />
+                </Svg>
+              </View>
+              <View style={styles.cornerBottomLeft}>
+                <Svg
+                  width={10}
+                  height={10}
+                  viewBox="0 0 10 10"
+                  fill="none"
+                  style={{ transform: [{ scaleX: -1 }, { scaleY: -1 }] }}
+                >
+                  <Path d="M0 0.5H9V9.5" stroke="white" />
+                </Svg>
+              </View>
+              <View style={styles.cornerBottomRight}>
+                <Svg
+                  width={10}
+                  height={10}
+                  viewBox="0 0 10 10"
+                  fill="none"
+                  style={{ transform: [{ scaleY: -1 }] }}
+                >
+                  <Path d="M0 0.5H9V9.5" stroke="white" />
+                </Svg>
+              </View>
             </View>
           </View>
 
@@ -618,22 +708,80 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#A4BAD2",
   },
-  disconnectButtonSmall: {
-    borderWidth: 1,
+  addressSection: {
+    width: "100%",
+    paddingHorizontal: 36,
+    marginBottom: 24,
+  },
+  addressLabel: {
+    fontFamily: Fonts.circular.book,
+    fontSize: 11,
+    color: "rgba(255, 255, 255, 0.5)",
+    marginBottom: Spacing.sm,
+  },
+  addressBoxWrapper: {
+    position: "relative",
+    padding: 6,
+  },
+  addressBoxFrame: {
+    borderWidth: 0.7,
     borderColor: "#484848",
-    borderRadius: 6,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.xl,
-    marginTop: Spacing.md,
+    padding: 2,
   },
-  disconnectButtonSmallPressed: {
-    opacity: 0.7,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  addressBoxContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    paddingVertical: 3,
+    paddingLeft: 8,
+    paddingRight: 3,
   },
-  disconnectButtonSmallText: {
-    fontFamily: Fonts.circular.medium,
-    fontSize: 13,
-    color: "#A4BAD2",
+  cornerTopLeft: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+  },
+  cornerTopRight: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+  },
+  cornerBottomLeft: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+  },
+  cornerBottomRight: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+  },
+  addressText: {
+    fontFamily: Fonts.circular.book,
+    fontSize: 12,
+    color: "#FFFFFF",
+    flex: 1,
+  },
+  copyButton: {
+    backgroundColor: "#D9D9D9",
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  copyButtonPressed: {
+    backgroundColor: "#BBBBBB",
+  },
+  copyButtonCopied: {
+    backgroundColor: "#22C55E",
+  },
+  copyButtonText: {
+    fontFamily: Fonts.circular.book,
+    fontSize: 11,
+    color: "#000000",
+    textAlign: "center",
+  },
+  copyButtonTextCopied: {
+    color: "#FFFFFF",
   },
   connectedIndicatorContainer: {
     justifyContent: "center",

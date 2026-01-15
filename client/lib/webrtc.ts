@@ -1,47 +1,37 @@
-import {
-  decompressOffer,
-  generateKeyPair,
-  deriveSharedSecret,
-  encryptPayload,
-  encryptWalletAddress,
-  clearSensitiveData,
-  bytesToHex,
-  type QROfferData,
-  type EncryptedPayload,
-  type WalletConnectedPayload,
-  type KeyPair,
-} from './crypto';
+import Peer, { DataConnection } from 'peerjs';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'failed';
 
 export interface WebRTCSession {
-  websocket: WebSocket | null;
-  keyPair: KeyPair | null;
-  sharedSecret: Uint8Array | null;
-  dashboardPublicKey: string | null;
-  sessionId: string | null;
+  peer: Peer | null;
+  connection: DataConnection | null;
+  peerId: string | null;
   status: ConnectionStatus;
-  compressedAnswer: string | null;
   walletSent: boolean;
 }
 
 export function createInitialSession(): WebRTCSession {
   return {
-    websocket: null,
-    keyPair: null,
-    sharedSecret: null,
-    dashboardPublicKey: null,
-    sessionId: null,
+    peer: null,
+    connection: null,
+    peerId: null,
     status: 'disconnected',
-    compressedAnswer: null,
     walletSent: false,
   };
+}
+
+function parseQRCode(qrData: string): string {
+  if (!qrData.startsWith('griplock:')) {
+    throw new Error('Invalid QR code - not a GRIPLOCK QR');
+  }
+  return qrData.replace('griplock:', '');
 }
 
 export async function initializeWebRTCFromQR(
   qrData: string,
   onStatusChange: (status: ConnectionStatus) => void,
-  onMessage: (message: unknown) => void
+  onMessage: (message: unknown) => void,
+  onDisconnect?: (reason: 'peer_closed' | 'connection_failed' | 'data_channel_closed') => void
 ): Promise<WebRTCSession> {
   const session = createInitialSession();
 
@@ -49,116 +39,81 @@ export async function initializeWebRTCFromQR(
     onStatusChange('connecting');
     session.status = 'connecting';
 
-    const offerData: QROfferData = decompressOffer(qrData);
-    
-    session.dashboardPublicKey = offerData.pk;
-    session.sessionId = offerData.sessionId;
+    const dashboardPeerId = parseQRCode(qrData);
+    session.peerId = dashboardPeerId;
+    console.log('[PeerJS] Connecting to dashboard peer:', dashboardPeerId);
 
-    session.keyPair = generateKeyPair();
-    session.sharedSecret = deriveSharedSecret(session.keyPair.privateKey, offerData.pk);
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        console.log('[PeerJS] Connection timeout');
+        reject(new Error('Connection timeout - could not connect to dashboard'));
+      }, 15000);
 
-    // Use wsUrl from QR code directly (DO NOT append sessionId to path!)
-    // Dashboard expects sessionId in message payload, not URL
-    let wsUrl: string;
-    if (offerData.wsUrl) {
-      wsUrl = offerData.wsUrl;
-    } else {
-      const host = process.env.EXPO_PUBLIC_DOMAIN;
-      if (!host) {
-        throw new Error('Server URL not found in QR code. Please scan a new QR code from the dashboard.');
-      }
-      const wsProtocol = host.includes('localhost') ? 'ws' : 'wss';
-      wsUrl = `${wsProtocol}://${host}/ws`;
-    }
+      session.peer = new Peer();
 
-    console.log('[WS] Connecting to:', wsUrl);
-    session.websocket = new WebSocket(wsUrl);
+      session.peer.on('open', (id) => {
+        console.log('[PeerJS] Connected to signaling server, our ID:', id);
 
-    session.websocket.onopen = () => {
-      console.log('[WS] Connection opened');
-      const registerMsg = {
-        type: 'register',
-        role: 'mobile',
-        sessionId: offerData.sessionId
-      };
-      console.log('[WS] Sending register:', JSON.stringify(registerMsg));
-      session.websocket?.send(JSON.stringify(registerMsg));
-    };
+        session.connection = session.peer!.connect(dashboardPeerId, {
+          reliable: true,
+        });
 
-    session.websocket.onmessage = (event) => {
-      console.log('[WS] Raw message received:', event.data);
-      try {
-        const msg = JSON.parse(event.data);
-        console.log('[WS] Parsed message:', JSON.stringify(msg));
-        
-        if (msg.type === 'registered' || (msg.type === 'ack' && msg.received === 'register')) {
-          console.log('[WS] Registration confirmed - setting status to connected');
+        session.connection.on('open', () => {
+          console.log('[PeerJS] DataConnection opened - P2P ready!');
+          clearTimeout(timeout);
           session.status = 'connected';
           onStatusChange('connected');
-        }
-        
-        if (msg.type === 'error') {
-          console.log('[WS] Error message received');
-          session.status = 'failed';
-          onStatusChange('failed');
-        }
-        
-        if (msg.type === 'dashboard_disconnected') {
-          console.log('[WS] Dashboard disconnected:', msg.reason);
+          resolve(session);
+        });
+
+        session.connection.on('data', (data) => {
+          console.log('[PeerJS] Received data:', data);
+          try {
+            const msg = typeof data === 'string' ? JSON.parse(data) : data;
+            onMessage(msg);
+
+            if (msg.type === 'disconnect') {
+              console.log('[PeerJS] Dashboard sent disconnect');
+              session.status = 'disconnected';
+              onStatusChange('disconnected');
+              onDisconnect?.('peer_closed');
+            }
+          } catch {
+            onMessage(data);
+          }
+        });
+
+        session.connection.on('close', () => {
+          console.log('[PeerJS] Connection closed');
           session.status = 'disconnected';
           onStatusChange('disconnected');
-        }
-        
-        onMessage(msg);
-      } catch {
-        console.log('[WS] Failed to parse message');
-        onMessage(event.data);
-      }
-    };
+          onDisconnect?.('data_channel_closed');
+        });
 
-    session.websocket.onerror = (err) => {
-      console.log('[WS] Error occurred:', err);
-      if (!session.walletSent) {
+        session.connection.on('error', (err) => {
+          console.error('[PeerJS] Connection error:', err);
+          clearTimeout(timeout);
+          session.status = 'failed';
+          onStatusChange('failed');
+          onDisconnect?.('connection_failed');
+          reject(err);
+        });
+      });
+
+      session.peer.on('error', (err) => {
+        console.error('[PeerJS] Peer error:', err);
+        clearTimeout(timeout);
         session.status = 'failed';
         onStatusChange('failed');
-      } else {
-        console.log('[WS] Error after wallet sent - ignoring (session complete)');
-      }
-    };
+        reject(err);
+      });
 
-    session.websocket.onclose = (event) => {
-      console.log('[WS] Connection closed, code:', event.code, 'reason:', event.reason);
-      if (session.walletSent) {
-        console.log('[WS] Connection closed after wallet sent - session complete');
-        session.status = 'disconnected';
-        onStatusChange('disconnected');
-      } else if (session.status !== 'failed') {
-        session.status = 'disconnected';
-        onStatusChange('disconnected');
-      }
-    };
-
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Connection timeout'));
-      }, 10000);
-
-      const checkConnection = () => {
-        if (session.websocket?.readyState === WebSocket.OPEN) {
-          clearTimeout(timeout);
-          resolve();
-        } else if (session.websocket?.readyState === WebSocket.CLOSED) {
-          clearTimeout(timeout);
-          reject(new Error('Connection failed'));
-        } else {
-          setTimeout(checkConnection, 100);
-        }
-      };
-      checkConnection();
+      session.peer.on('disconnected', () => {
+        console.log('[PeerJS] Disconnected from signaling server');
+      });
     });
-
-    return session;
   } catch (error) {
+    console.error('[PeerJS] Initialization failed:', error);
     cleanupSession(session);
     session.status = 'failed';
     onStatusChange('failed');
@@ -166,90 +121,58 @@ export async function initializeWebRTCFromQR(
   }
 }
 
-export function sendEncryptedWalletData(
-  session: WebRTCSession,
-  nfcId: string,
-  pin: string
-): boolean {
-  if (!session.websocket || session.websocket.readyState !== WebSocket.OPEN) {
-    console.log('[sendWalletData] WebSocket not ready:', session.websocket?.readyState);
+function sendMessage(session: WebRTCSession, message: object): boolean {
+  if (!session.connection?.open) {
+    console.log('[PeerJS] Connection not open, cannot send');
     return false;
   }
 
-  if (!session.sharedSecret || !session.keyPair) {
-    console.log('[sendWalletData] Missing keys:', { hasSecret: !!session.sharedSecret, hasKeyPair: !!session.keyPair });
+  try {
+    session.connection.send(JSON.stringify(message));
+    return true;
+  } catch (err) {
+    console.error('[PeerJS] Send error:', err);
     return false;
   }
-
-  const encryptedPayload: EncryptedPayload = encryptPayload(
-    session.sharedSecret,
-    { nfcId, pin },
-    session.keyPair.publicKey
-  );
-
-  session.websocket.send(JSON.stringify(encryptedPayload));
-
-  clearSensitiveData(session.sharedSecret, session.keyPair.privateKey);
-  session.sharedSecret = null;
-  session.keyPair = null;
-  session.dashboardPublicKey = null;
-
-  return true;
 }
 
 export function sendWalletAddress(
   session: WebRTCSession,
   walletAddress: string
 ): boolean {
-  if (!session.websocket || session.websocket.readyState !== WebSocket.OPEN) {
-    console.log('[sendWalletAddress] WebSocket not ready:', session.websocket?.readyState);
-    return false;
-  }
-
   const message = {
     type: 'wallet_connected',
     address: walletAddress,
   };
 
-  console.log('[sendWalletAddress] Sending wallet_connected message:', message);
-  session.websocket.send(JSON.stringify(message));
+  console.log('[PeerJS] Sending wallet_connected');
+  const success = sendMessage(session, message);
 
-  session.walletSent = true;
-
-  if (session.sharedSecret) {
-    clearSensitiveData(session.sharedSecret);
-    session.sharedSecret = null;
+  if (success) {
+    session.walletSent = true;
   }
-  if (session.keyPair) {
-    clearSensitiveData(session.keyPair.privateKey);
-    session.keyPair = null;
-  }
-  session.dashboardPublicKey = null;
 
-  return true;
+  return success;
 }
 
 export function sendAttemptUpdate(
   session: WebRTCSession,
   attempts: number,
   maxAttempts: number,
-  isLockedOut: boolean
+  isLockedOut: boolean,
+  lockoutEndTime?: number
 ): boolean {
-  if (!session.websocket || session.websocket.readyState !== WebSocket.OPEN) {
-    return false;
-  }
-
   const message = {
     type: 'attempt_update',
     attempts,
     maxAttempts,
     remaining: maxAttempts - attempts,
     isLockedOut,
+    lockoutEndTime,
     timestamp: Date.now(),
   };
 
-  session.websocket.send(JSON.stringify(message));
-  return true;
+  return sendMessage(session, message);
 }
 
 export interface SignResponse {
@@ -267,11 +190,6 @@ export function sendSignResponse(
   signature: string | null,
   error: string | null
 ): boolean {
-  if (!session.websocket || session.websocket.readyState !== WebSocket.OPEN) {
-    console.log('[sendSignResponse] WebSocket not ready');
-    return false;
-  }
-
   const message: SignResponse = {
     type: 'sign_response',
     action,
@@ -280,28 +198,37 @@ export function sendSignResponse(
     error,
   };
 
-  console.log('[sendSignResponse] Sending:', message);
-  session.websocket.send(JSON.stringify(message));
-  return true;
+  console.log('[PeerJS] Sending sign_response:', message);
+  return sendMessage(session, message);
 }
 
-export function cleanupSession(session: WebRTCSession): void {
-  if (session.websocket) {
-    session.websocket.close();
-    session.websocket = null;
+export function sendDisconnect(session: WebRTCSession): boolean {
+  const message = {
+    type: 'disconnect',
+    reason: 'user_initiated',
+    timestamp: Date.now(),
+  };
+
+  console.log('[PeerJS] Sending disconnect message');
+  return sendMessage(session, message);
+}
+
+export function cleanupSession(session: WebRTCSession, sendDisconnectMsg = true): void {
+  if (sendDisconnectMsg && session.connection?.open) {
+    sendDisconnect(session);
   }
 
-  if (session.keyPair) {
-    clearSensitiveData(session.keyPair.privateKey);
-    session.keyPair = null;
+  if (session.connection) {
+    session.connection.close();
+    session.connection = null;
   }
 
-  if (session.sharedSecret) {
-    clearSensitiveData(session.sharedSecret);
-    session.sharedSecret = null;
+  if (session.peer) {
+    session.peer.destroy();
+    session.peer = null;
   }
 
-  session.dashboardPublicKey = null;
-  session.sessionId = null;
+  session.peerId = null;
   session.status = 'disconnected';
+  session.walletSent = false;
 }
