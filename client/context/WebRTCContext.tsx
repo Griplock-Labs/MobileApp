@@ -1,18 +1,18 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import {
-  WebRTCSession,
+  RelaySession,
   ConnectionStatus,
   createInitialSession,
-  initializeWebRTCFromQR,
+  initializeFromQR as initializeRelayFromQR,
   sendWalletAddress as sendWalletAddressRaw,
   sendAttemptUpdate,
-  sendSignResponse as sendSignResponseRaw,
+  sendSignResult as sendSignResultRaw,
   cleanupSession,
   sendDisconnect as sendDisconnectRaw,
-} from '@/lib/webrtc';
+} from '@/lib/websocket-relay';
 import { Keypair } from '@solana/web3.js';
 
-export type DisconnectReason = 'peer_closed' | 'connection_failed' | 'data_channel_closed' | 'user_initiated' | 'dashboard_disconnected';
+export type DisconnectReason = 'peer_closed' | 'connection_failed' | 'room_expired' | 'user_initiated' | 'dashboard_disconnected';
 
 export interface DashboardDisconnectInfo {
   reason: 'user_logout' | 'session_expired' | null;
@@ -27,6 +27,7 @@ export interface PeerDisconnectInfo {
 
 export interface SignRequest {
   type: 'sign_request';
+  requestId: string;
   action: 'compress' | 'decompress';
   mint: string;
   symbol: string;
@@ -35,7 +36,7 @@ export interface SignRequest {
 }
 
 interface WebRTCContextValue {
-  session: WebRTCSession;
+  session: RelaySession;
   status: ConnectionStatus;
   nfcData: string | null;
   walletAddress: string | null;
@@ -50,7 +51,7 @@ interface WebRTCContextValue {
   setWalletAddress: (address: string) => void;
   setSolanaKeypair: (keypair: Keypair) => void;
   notifyAttemptUpdate: (attempts: number, maxAttempts: number, isLockedOut: boolean, lockoutEndTime?: number) => boolean;
-  sendSignResponse: (action: 'compress' | 'decompress', success: boolean, signature: string | null, error: string | null) => boolean;
+  sendSignResult: (requestId: string, action: 'compress' | 'decompress', success: boolean, signature?: string, error?: string) => boolean;
   sendDisconnect: () => boolean;
   clearPendingSignRequest: () => void;
   cleanup: (sendDisconnectMsg?: boolean) => void;
@@ -60,7 +61,7 @@ interface WebRTCContextValue {
 const WebRTCContext = createContext<WebRTCContextValue | null>(null);
 
 export function WebRTCProvider({ children }: { children: React.ReactNode }) {
-  const sessionRef = useRef<WebRTCSession>(createInitialSession());
+  const sessionRef = useRef<RelaySession>(createInitialSession());
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [nfcData, setNfcDataState] = useState<string | null>(null);
   const [walletAddress, setWalletAddressState] = useState<string | null>(null);
@@ -91,24 +92,24 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const initializeFromQR = useCallback(async (qrData: string) => {
-    console.log('[WebRTC] initializeFromQR called');
+    console.log('[Relay] initializeFromQR called');
     setDashboardDisconnect({ reason: null, address: null, timestamp: null });
     setPeerDisconnect({ reason: null, timestamp: null });
     try {
-      const newSession = await initializeWebRTCFromQR(
+      const newSession = await initializeRelayFromQR(
         qrData,
         (newStatus) => {
-          console.log('[WebRTC] Status changed to:', newStatus);
+          console.log('[Relay] Status changed to:', newStatus);
           setStatus(newStatus);
         },
         (message) => {
-          console.log('[WebRTC] Message received:', JSON.stringify(message));
+          console.log('[Relay] Message received:', JSON.stringify(message));
           setLastMessage(message);
           
           if (typeof message === 'object' && message !== null && 'type' in message) {
             const msg = message as { type: string; reason?: string; address?: string; timestamp?: number };
             if (msg.type === 'dashboard_disconnected' || msg.type === 'disconnect') {
-              console.log('[WebRTC] Dashboard/peer disconnected:', msg.reason);
+              console.log('[Relay] Dashboard/peer disconnected:', msg.reason);
               setDashboardDisconnect({
                 reason: (msg.reason as 'user_logout' | 'session_expired') || null,
                 address: msg.address || null,
@@ -121,14 +122,14 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
             }
             
             if (msg.type === 'sign_request') {
-              console.log('[WebRTC] Sign request received:', msg);
+              console.log('[Relay] Sign request received:', msg);
               const signReq = message as SignRequest;
               setPendingSignRequest(signReq);
             }
           }
         },
         (reason) => {
-          console.log('[WebRTC] Peer disconnected, reason:', reason);
+          console.log('[Relay] Peer disconnected, reason:', reason);
           setPeerDisconnect({
             reason,
             timestamp: Date.now(),
@@ -136,9 +137,9 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
         }
       );
       sessionRef.current = newSession;
-      console.log('[WebRTC] Session initialized successfully');
+      console.log('[Relay] Session initialized successfully');
     } catch (error) {
-      console.error('[WebRTC] Failed to initialize:', error);
+      console.error('[Relay] Failed to initialize:', error);
       sessionRef.current = createInitialSession();
       setStatus('disconnected');
       throw error;
@@ -176,13 +177,14 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
     setSolanaKeypairState(keypair);
   }, []);
 
-  const sendSignResponse = useCallback((
+  const sendSignResult = useCallback((
+    requestId: string,
     action: 'compress' | 'decompress',
     success: boolean,
-    signature: string | null,
-    error: string | null
+    signature?: string,
+    error?: string
   ): boolean => {
-    return sendSignResponseRaw(sessionRef.current, action, success, signature, error);
+    return sendSignResultRaw(sessionRef.current, requestId, action, success, signature, error);
   }, []);
 
   const clearPendingSignRequest = useCallback(() => {
@@ -213,7 +215,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
         setWalletAddress,
         setSolanaKeypair,
         notifyAttemptUpdate,
-        sendSignResponse,
+        sendSignResult,
         sendDisconnect,
         clearPendingSignRequest,
         cleanup,

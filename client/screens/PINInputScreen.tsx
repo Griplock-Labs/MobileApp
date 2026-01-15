@@ -71,32 +71,26 @@ const logoStyles = StyleSheet.create({
   },
 });
 
-const BRAILLE_SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-
-function BrailleLoader() {
+function WalletLoader() {
   const [frame, setFrame] = useState(0);
-  const frameRef = useRef(0);
-
+  const frames = ['|', '/', '-', '\\'];
+  
   useEffect(() => {
     const interval = setInterval(() => {
-      frameRef.current = (frameRef.current + 1) % BRAILLE_SPINNER.length;
-      setFrame(frameRef.current);
-    }, 80);
-
+      setFrame((prev) => (prev + 1) % frames.length);
+    }, 100);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <View style={loaderStyles.overlay}>
       <View style={loaderStyles.container}>
-        <Text style={loaderStyles.spinner}>
-          {BRAILLE_SPINNER[frame]}
-        </Text>
+        <Text style={loaderStyles.asciiFrame}>{frames[frame]}</Text>
         <Text style={loaderStyles.loadingText}>
-          DERIVING WALLET...
+          DERIVING WALLET
         </Text>
         <Text style={loaderStyles.subText}>
-          Please wait
+          Securing your keys...
         </Text>
       </View>
     </View>
@@ -114,10 +108,11 @@ const loaderStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  spinner: {
+  asciiFrame: {
+    fontFamily: 'monospace',
     fontSize: 48,
-    color: '#FFFFFF',
-    marginBottom: Spacing.xl,
+    color: '#A4BAD2',
+    marginBottom: Spacing["2xl"],
   },
   loadingText: {
     fontFamily: Fonts.astroSpace,
@@ -229,7 +224,7 @@ export default function PINInputScreen() {
 
       // Wait for animations to complete and UI to render, then run heavy computation
       InteractionManager.runAfterInteractions(() => {
-        // Additional delay to ensure loading screen is visible
+        // Longer delay to ensure loading screen is fully painted before heavy computation
         setTimeout(async () => {
           try {
             if (!route.params?.nfcData || !route.params?.sessionId) {
@@ -296,7 +291,7 @@ export default function PINInputScreen() {
               startLockout(lockoutDelay);
             }
           }
-        }, 300);
+        }, 500);
       });
     }
   }, [pin, isProcessing, isLockedOut, attempts, navigation, route.params, connectionStatus, sendWalletAddress, setWalletAddress, setSolanaKeypair, shakeAnim, scaleAnim, startLockout, notifyAttemptUpdate]);
@@ -384,7 +379,7 @@ export default function PINInputScreen() {
 
   // Show loading screen when processing
   if (isProcessing) {
-    return <BrailleLoader />;
+    return <WalletLoader />;
   }
 
   return (

@@ -78,8 +78,8 @@ export default function SignRequestModal({
   const isCompress = request.action === 'compress';
   const actionTitle = isCompress ? 'Hide Balance' : 'Show Balance';
   const actionDescription = isCompress
-    ? 'Compress tokens using ZK Compression to hide your balance from public view.'
-    : 'Decompress tokens to reveal your balance and make tokens publicly visible.';
+    ? 'Make your token balance private and hidden from public view.'
+    : 'Make your token balance visible and publicly accessible.';
 
   return (
     <Modal

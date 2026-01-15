@@ -6,6 +6,7 @@ import {
   Pressable,
   Platform,
   Dimensions,
+  Modal,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,8 +28,6 @@ import Animated, {
 import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
-import SignRequestModal from "@/components/SignRequestModal";
-import { compressTokens, decompressTokens } from "@/lib/zk-compression";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "Home">;
 
@@ -122,12 +121,14 @@ export default function HomeScreen() {
   const peerDisconnect = webrtc?.peerDisconnect;
   const pendingSignRequest = webrtc?.pendingSignRequest;
   const solanaKeypair = webrtc?.solanaKeypair;
-  const sendSignResponse = webrtc?.sendSignResponse;
+  const sendSignResult = webrtc?.sendSignResult;
   const clearPendingSignRequest = webrtc?.clearPendingSignRequest;
   const cleanup = webrtc?.cleanup;
 
   const [copied, setCopied] = useState(false);
+  const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const cleanupRef = useRef(cleanup);
+  const cleanupCalledRef = useRef(false);
   cleanupRef.current = cleanup;
 
   const isConnected = connectionStatus === "connected" && !!walletAddress;
@@ -138,12 +139,17 @@ export default function HomeScreen() {
   const shouldShowConnectedUI = isConnected && !isDashboardDisconnected && !isPeerDisconnected;
 
   useEffect(() => {
-    if (isPeerDisconnected && walletAddress) {
+    if (isPeerDisconnected && walletAddress && !cleanupCalledRef.current) {
+      cleanupCalledRef.current = true;
       console.log('[HomeScreen] Peer disconnected, cleaning up session');
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       }
       cleanupRef.current?.(false);
+    }
+    
+    if (!isPeerDisconnected) {
+      cleanupCalledRef.current = false;
     }
   }, [isPeerDisconnected, walletAddress]);
 
@@ -178,7 +184,15 @@ export default function HomeScreen() {
     if (Platform.OS !== "web") {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
+    setShowDisconnectDialog(false);
     cleanup?.();
+  };
+
+  const handleConnectedIconPress = async () => {
+    if (Platform.OS !== "web") {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setShowDisconnectDialog(true);
   };
 
   const handleCopyAddress = async () => {
@@ -195,48 +209,11 @@ export default function HomeScreen() {
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : "";
 
-  const handleSignConfirm = async () => {
-    if (!pendingSignRequest || !solanaKeypair || !sendSignResponse) {
-      console.log('[SignRequest] Missing required data');
-      return;
+  useEffect(() => {
+    if (pendingSignRequest && shouldShowConnectedUI) {
+      navigation.navigate("SignConfirm");
     }
-
-    try {
-      const { action, mint, amount } = pendingSignRequest;
-      console.log('[SignRequest] Processing:', action, mint, amount);
-
-      let result;
-      if (action === 'compress') {
-        result = await compressTokens(solanaKeypair, mint, amount);
-      } else {
-        result = await decompressTokens(solanaKeypair, mint, amount);
-      }
-
-      console.log('[SignRequest] Result:', result);
-      sendSignResponse(action, result.success, result.signature, result.error);
-
-      if (Platform.OS !== "web") {
-        if (result.success) {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        }
-      }
-    } catch (error) {
-      console.error('[SignRequest] Error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      sendSignResponse(pendingSignRequest.action, false, null, errorMessage);
-    } finally {
-      clearPendingSignRequest?.();
-    }
-  };
-
-  const handleSignCancel = () => {
-    if (pendingSignRequest && sendSignResponse) {
-      sendSignResponse(pendingSignRequest.action, false, null, 'User cancelled');
-    }
-    clearPendingSignRequest?.();
-  };
+  }, [pendingSignRequest, shouldShowConnectedUI, navigation]);
 
   const getSyncStatusText = () => {
     if (isDashboardDisconnected) {
@@ -401,20 +378,49 @@ export default function HomeScreen() {
                   </Pressable>
                 </View>
 
-                <View style={styles.connectedIndicatorContainer}>
+                <Pressable 
+                  style={styles.connectedIndicatorContainer}
+                  onPress={handleConnectedIconPress}
+                  testID="button-connected-icon"
+                >
                   <CheckIcon size={40} />
-                </View>
+                </Pressable>
               </View>
             </View>
           </View>
         </View>
 
-        <SignRequestModal
-          visible={!!pendingSignRequest}
-          request={pendingSignRequest ?? null}
-          onConfirm={handleSignConfirm}
-          onCancel={handleSignCancel}
-        />
+        <Modal
+          visible={showDisconnectDialog}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDisconnectDialog(false)}
+        >
+          <View style={styles.dialogOverlay}>
+            <View style={styles.dialogContainer}>
+              <Text style={styles.dialogTitle}>Disconnect Wallet</Text>
+              <Text style={styles.dialogMessage}>
+                Are you sure you want to disconnect from the dashboard?
+              </Text>
+              <View style={styles.dialogButtons}>
+                <Pressable
+                  style={styles.dialogButtonCancel}
+                  onPress={() => setShowDisconnectDialog(false)}
+                  testID="button-cancel-disconnect"
+                >
+                  <Text style={styles.dialogButtonCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.dialogButtonConfirm}
+                  onPress={handleDisconnect}
+                  testID="button-confirm-disconnect"
+                >
+                  <Text style={styles.dialogButtonConfirmText}>Disconnect</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -510,13 +516,6 @@ export default function HomeScreen() {
           </View>
         </View>
       </View>
-
-      <SignRequestModal
-        visible={!!pendingSignRequest}
-        request={pendingSignRequest ?? null}
-        onConfirm={handleSignConfirm}
-        onCancel={handleSignCancel}
-      />
     </View>
   );
 }
@@ -787,5 +786,64 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginTop: -28,
+  },
+  dialogOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Spacing["2xl"],
+  },
+  dialogContainer: {
+    backgroundColor: "#1A1A1A",
+    borderRadius: 12,
+    padding: Spacing["2xl"],
+    width: "100%",
+    maxWidth: 320,
+    borderWidth: 1,
+    borderColor: "#333333",
+  },
+  dialogTitle: {
+    fontFamily: Fonts.circular.medium,
+    fontSize: 18,
+    color: "#FFFFFF",
+    textAlign: "center",
+    marginBottom: Spacing.md,
+  },
+  dialogMessage: {
+    fontFamily: Fonts.circular.book,
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.6)",
+    textAlign: "center",
+    marginBottom: Spacing["2xl"],
+    lineHeight: 20,
+  },
+  dialogButtons: {
+    flexDirection: "row",
+    gap: Spacing.md,
+  },
+  dialogButtonCancel: {
+    flex: 1,
+    backgroundColor: "#333333",
+    paddingVertical: Spacing.md,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  dialogButtonCancelText: {
+    fontFamily: Fonts.circular.medium,
+    fontSize: 14,
+    color: "#FFFFFF",
+  },
+  dialogButtonConfirm: {
+    flex: 1,
+    backgroundColor: "#DC2626",
+    paddingVertical: Spacing.md,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  dialogButtonConfirmText: {
+    fontFamily: Fonts.circular.medium,
+    fontSize: 14,
+    color: "#FFFFFF",
   },
 });

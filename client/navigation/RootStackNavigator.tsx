@@ -6,12 +6,14 @@ import HomeScreen from "@/screens/HomeScreen";
 import QRScannerScreen from "@/screens/QRScannerScreen";
 import NFCReaderScreen from "@/screens/NFCReaderScreen";
 import PINInputScreen from "@/screens/PINInputScreen";
+import SignConfirmScreen from "@/screens/SignConfirmScreen";
 
 export type RootStackParamList = {
   Home: undefined;
   QRScanner: { sessionId: string };
   NFCReader: { sessionId?: string };
   PINInput: { sessionId: string; nfcData: string };
+  SignConfirm: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -54,6 +56,11 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="PINInput"
         component={PINInputScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SignConfirm"
+        component={SignConfirmScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>
