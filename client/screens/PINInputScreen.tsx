@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { View, StyleSheet, Platform, Pressable, Text } from "react-native";
+import { View, StyleSheet, Platform, Pressable, Text, InteractionManager } from "react-native";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
@@ -10,12 +10,15 @@ import Animated, {
   withSequence,
   withTiming,
   withSpring,
+  withRepeat,
+  Easing,
+  interpolate,
 } from "react-native-reanimated";
 
 import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
-import { deriveSolanaAddress } from "@/lib/crypto";
+import { deriveSolanaAddress, deriveSolanaKeypair } from "@/lib/crypto";
 import ScreenHeader from "@/components/ScreenHeader";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "PINInput">;
@@ -68,6 +71,68 @@ const logoStyles = StyleSheet.create({
   },
 });
 
+const BRAILLE_SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+function BrailleLoader() {
+  const [frame, setFrame] = useState(0);
+  const frameRef = useRef(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      frameRef.current = (frameRef.current + 1) % BRAILLE_SPINNER.length;
+      setFrame(frameRef.current);
+    }, 80);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <View style={loaderStyles.overlay}>
+      <View style={loaderStyles.container}>
+        <Text style={loaderStyles.spinner}>
+          {BRAILLE_SPINNER[frame]}
+        </Text>
+        <Text style={loaderStyles.loadingText}>
+          DERIVING WALLET...
+        </Text>
+        <Text style={loaderStyles.subText}>
+          Please wait
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const loaderStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spinner: {
+    fontSize: 48,
+    color: '#FFFFFF',
+    marginBottom: Spacing.xl,
+  },
+  loadingText: {
+    fontFamily: Fonts.astroSpace,
+    fontSize: 14,
+    color: '#FFFFFF',
+    letterSpacing: 3,
+  },
+  subText: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: Spacing.sm,
+  },
+});
+
 export default function PINInputScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RouteProps>();
@@ -77,7 +142,7 @@ export default function PINInputScreen() {
   const [isLockedOut, setIsLockedOut] = useState(false);
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
   const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const { sendWalletAddress, setWalletAddress, status: connectionStatus, cleanup, notifyAttemptUpdate } = useWebRTC();
+  const { sendWalletAddress, setWalletAddress, setSolanaKeypair, status: connectionStatus, cleanup, notifyAttemptUpdate } = useWebRTC();
   
   const shakeAnim = useSharedValue(0);
   const scaleAnim = useSharedValue(1);
@@ -162,69 +227,79 @@ export default function PINInputScreen() {
         withSpring(1, { damping: 15 })
       );
 
-      try {
-        if (!route.params?.nfcData || !route.params?.sessionId) {
-          console.log('[PIN] ERROR: Missing NFC data or sessionId');
-          throw new Error("Missing required NFC data");
-        }
+      // Wait for animations to complete and UI to render, then run heavy computation
+      InteractionManager.runAfterInteractions(() => {
+        // Additional delay to ensure loading screen is visible
+        setTimeout(async () => {
+          try {
+            if (!route.params?.nfcData || !route.params?.sessionId) {
+              console.log('[PIN] ERROR: Missing NFC data or sessionId');
+              throw new Error("Missing required NFC data");
+            }
 
-        if (connectionStatus !== "connected") {
-          console.log('[PIN] ERROR: Not connected, status:', connectionStatus);
-          throw new Error("Dashboard not connected");
-        }
+            if (connectionStatus !== "connected") {
+              console.log('[PIN] ERROR: Not connected, status:', connectionStatus);
+              throw new Error("Dashboard not connected");
+            }
 
-        console.log('[PIN] Deriving wallet address...');
-        const walletAddress = deriveWalletAddress(route.params.nfcData, newPin);
-        console.log('[PIN] Wallet derived:', walletAddress);
+            console.log('[PIN] Deriving wallet keypair...');
+            const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
+            const walletAddress = keypair.publicKey.toBase58();
+            console.log('[PIN] Wallet derived:', walletAddress);
 
-        console.log('[PIN] Sending wallet address to dashboard...');
-        const sent = sendWalletAddress(walletAddress);
-        console.log('[PIN] Send result:', sent);
-        if (!sent) {
-          throw new Error("Failed to send wallet address");
-        }
+            console.log('[PIN] Storing keypair in context for signing...');
+            setSolanaKeypair(keypair);
 
-        setWalletAddress(walletAddress);
+            // Add minimal delay so user can see loading animation
+            await new Promise(resolve => setTimeout(resolve, 1200));
 
-        if (Platform.OS !== "web") {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
+            console.log('[PIN] Sending wallet address to dashboard...');
+            const sent = sendWalletAddress(walletAddress);
+            console.log('[PIN] Send result:', sent);
+            if (!sent) {
+              throw new Error("Failed to send wallet address");
+            }
 
-        navigation.replace("Success", {
-          sessionId: route.params.sessionId,
-          walletAddress,
-        });
-      } catch (error) {
-        console.log('[PIN] CATCH ERROR:', error instanceof Error ? error.message : error);
-        
-        const newAttempts = attempts + 1;
-        setAttempts(newAttempts);
-        
-        shakeAnim.value = withSequence(
-          withTiming(-10, { duration: 50 }),
-          withTiming(10, { duration: 50 }),
-          withTiming(-10, { duration: 50 }),
-          withTiming(10, { duration: 50 }),
-          withTiming(0, { duration: 50 })
-        );
-        
-        if (Platform.OS !== "web") {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        }
-        
-        setPin("");
-        setIsProcessing(false);
-        
-        const isHardLockout = newAttempts >= MAX_ATTEMPTS;
-        notifyAttemptUpdate(newAttempts, MAX_ATTEMPTS, isHardLockout);
-        
-        const lockoutDelay = LOCKOUT_DELAYS[newAttempts] || 0;
-        if (lockoutDelay > 0) {
-          startLockout(lockoutDelay);
-        }
-      }
+            setWalletAddress(walletAddress);
+
+            if (Platform.OS !== "web") {
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+
+            navigation.replace("Home");
+          } catch (error) {
+            console.log('[PIN] CATCH ERROR:', error instanceof Error ? error.message : error);
+            
+            const newAttempts = attempts + 1;
+            setAttempts(newAttempts);
+            
+            shakeAnim.value = withSequence(
+              withTiming(-10, { duration: 50 }),
+              withTiming(10, { duration: 50 }),
+              withTiming(-10, { duration: 50 }),
+              withTiming(10, { duration: 50 }),
+              withTiming(0, { duration: 50 })
+            );
+            
+            if (Platform.OS !== "web") {
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            }
+            
+            setPin("");
+            setIsProcessing(false);
+            
+            const isHardLockout = newAttempts >= MAX_ATTEMPTS;
+            notifyAttemptUpdate(newAttempts, MAX_ATTEMPTS, isHardLockout);
+            
+            const lockoutDelay = LOCKOUT_DELAYS[newAttempts] || 0;
+            if (lockoutDelay > 0) {
+              startLockout(lockoutDelay);
+            }
+          }
+        }, 300);
+      });
     }
-  }, [pin, isProcessing, isLockedOut, attempts, navigation, route.params, connectionStatus, sendWalletAddress, setWalletAddress, shakeAnim, scaleAnim, startLockout, notifyAttemptUpdate]);
+  }, [pin, isProcessing, isLockedOut, attempts, navigation, route.params, connectionStatus, sendWalletAddress, setWalletAddress, setSolanaKeypair, shakeAnim, scaleAnim, startLockout, notifyAttemptUpdate]);
 
   const renderPinBox = (index: number) => {
     const isFilled = index < pin.length;
@@ -307,6 +382,11 @@ export default function PINInputScreen() {
     );
   }
 
+  // Show loading screen when processing
+  if (isProcessing) {
+    return <BrailleLoader />;
+  }
+
   return (
     <View style={styles.container}>
       <ScreenHeader rightText="Enter PIN" />
@@ -331,7 +411,7 @@ export default function PINInputScreen() {
           ) : null}
         </View>
 
-        <View style={[styles.keypad, (isLockedOut || isProcessing) && styles.keypadDisabled]}>
+        <View style={[styles.keypad, isLockedOut && styles.keypadDisabled]}>
           {KEYPAD_NUMBERS.map((key, index) => renderKey(key, index))}
         </View>
       </View>

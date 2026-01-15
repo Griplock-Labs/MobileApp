@@ -103,6 +103,12 @@ export async function initializeWebRTCFromQR(
           onStatusChange('failed');
         }
         
+        if (msg.type === 'dashboard_disconnected') {
+          console.log('[WS] Dashboard disconnected:', msg.reason);
+          session.status = 'disconnected';
+          onStatusChange('disconnected');
+        }
+        
         onMessage(msg);
       } catch {
         console.log('[WS] Failed to parse message');
@@ -242,6 +248,39 @@ export function sendAttemptUpdate(
     timestamp: Date.now(),
   };
 
+  session.websocket.send(JSON.stringify(message));
+  return true;
+}
+
+export interface SignResponse {
+  type: 'sign_response';
+  action: 'compress' | 'decompress';
+  success: boolean;
+  signature: string | null;
+  error: string | null;
+}
+
+export function sendSignResponse(
+  session: WebRTCSession,
+  action: 'compress' | 'decompress',
+  success: boolean,
+  signature: string | null,
+  error: string | null
+): boolean {
+  if (!session.websocket || session.websocket.readyState !== WebSocket.OPEN) {
+    console.log('[sendSignResponse] WebSocket not ready');
+    return false;
+  }
+
+  const message: SignResponse = {
+    type: 'sign_response',
+    action,
+    success,
+    signature,
+    error,
+  };
+
+  console.log('[sendSignResponse] Sending:', message);
   session.websocket.send(JSON.stringify(message));
   return true;
 }

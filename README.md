@@ -40,7 +40,7 @@ GRIPLOCK is a fully decentralized ephemeral crypto wallet system. Users scan QR 
 1. Scan QR code from dashboard (contains WebSocket URL)
 2. Tap GRIPLOCK NFC card
 3. Enter 6-digit PIN
-4. Wallet derived locally: `SHA256(griplock_{nfc_id}:{pin})`
+4. Wallet derived locally: `PBKDF2(pin, salt=griplock_{nfc_id}, iterations=100000)`
 5. Wallet address sent encrypted to dashboard
 
 ## Requirements

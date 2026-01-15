@@ -1,8 +1,9 @@
 import pako from 'pako';
-import { x25519 } from '@noble/curves/ed25519.js';
-import { hkdf } from '@noble/hashes/hkdf.js';
-import { sha256 } from '@noble/hashes/sha2.js';
-import { gcm } from '@noble/ciphers/aes.js';
+import { x25519 } from '@noble/curves/ed25519';
+import { hkdf } from '@noble/hashes/hkdf';
+import { sha256 } from '@noble/hashes/sha2';
+import { pbkdf2 } from '@noble/hashes/pbkdf2';
+import { gcm } from '@noble/ciphers/aes';
 import { getRandomValues } from 'expo-crypto';
 import { Keypair } from '@solana/web3.js';
 
@@ -146,8 +147,19 @@ export function normalizeNfcTagId(tagId: string): string {
 
 export function deriveSolanaAddress(nfcData: string, pin: string): string {
   const normalizedNfc = normalizeNfcTagId(nfcData);
-  const combined = `griplock_${normalizedNfc}:${pin}`;
-  const seed = sha256(new TextEncoder().encode(combined));
+  const salt = new TextEncoder().encode(`griplock_${normalizedNfc}`);
+  const password = new TextEncoder().encode(pin);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const seed = pbkdf2(sha256 as any, password, salt, { c: 100000, dkLen: 32 });
   const keypair = Keypair.fromSeed(seed);
   return keypair.publicKey.toBase58();
+}
+
+export function deriveSolanaKeypair(nfcData: string, pin: string): Keypair {
+  const normalizedNfc = normalizeNfcTagId(nfcData);
+  const salt = new TextEncoder().encode(`griplock_${normalizedNfc}`);
+  const password = new TextEncoder().encode(pin);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const seed = pbkdf2(sha256 as any, password, salt, { c: 100000, dkLen: 32 });
+  return Keypair.fromSeed(seed);
 }

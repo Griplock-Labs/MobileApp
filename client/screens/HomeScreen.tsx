@@ -25,6 +25,9 @@ import Animated, {
 
 import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
+import { useWebRTC } from "@/context/WebRTCContext";
+import SignRequestModal from "@/components/SignRequestModal";
+import { compressTokens, decompressTokens } from "@/lib/zk-compression";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "Home">;
 
@@ -93,12 +96,39 @@ function UserIcon({
   );
 }
 
+function CheckIcon({ size = 88 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 88 88" fill="none">
+      <Path
+        d="M28.9229 14.0869C28.92 14.0883 28.9169 14.0894 28.9141 14.0908L43.3379 28.5146L35.9326 35.9199L20.3057 20.293C14.3289 26.2655 10.6319 34.5187 10.6318 43.6357C10.6321 61.8626 25.4079 76.6384 43.6348 76.6387C56.1745 76.6386 67.0792 69.6443 72.6641 59.3447H39.708V48.8721H86.957C84.3699 70.5019 65.9614 87.2704 43.6348 87.2705C19.5361 87.2703 0.000284349 67.7344 0 43.6357C8.83189e-05 27.7834 8.45375 13.9055 21.0986 6.26367L28.9229 14.0869ZM82.6035 23.9834C85.2167 29.1551 86.8314 34.9178 87.1924 41.0176H65.9209L82.6035 23.9834ZM71.877 10.374C74.2536 12.394 76.4122 14.6629 78.3096 17.1426L60.2422 35.5889L53.6436 28.9902L71.877 10.374ZM56.1846 1.83203C59.4205 2.80212 62.4981 4.13888 65.3701 5.79199L48.0898 23.4365L41.4893 16.8359L56.1846 1.83203ZM43.6357 0C44.7231 1.88442e-05 45.8017 0.0389942 46.8691 0.117188L35.9355 11.2822L27.668 3.01465C32.6131 1.06935 38.0001 0 43.6357 0Z"
+        fill="#06B040"
+      />
+    </Svg>
+  );
+}
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
   const pulseAnim = useSharedValue(0);
+
+  const webrtc = useWebRTC();
+  const walletAddress = webrtc?.walletAddress;
+  const connectionStatus = webrtc?.status ?? "disconnected";
+  const dashboardDisconnect = webrtc?.dashboardDisconnect;
+  const pendingSignRequest = webrtc?.pendingSignRequest;
+  const solanaKeypair = webrtc?.solanaKeypair;
+  const sendSignResponse = webrtc?.sendSignResponse;
+  const clearPendingSignRequest = webrtc?.clearPendingSignRequest;
+  const cleanup = webrtc?.cleanup;
+
+  const isConnected = connectionStatus === "connected" && !!walletAddress;
+  const isFailed = connectionStatus === "failed";
+  const isConnecting = connectionStatus === "connecting";
+  const isDashboardDisconnected = dashboardDisconnect?.reason !== null;
+  const shouldShowConnectedUI = isConnected && !isDashboardDisconnected;
 
   useEffect(() => {
     pulseAnim.value = withRepeat(
@@ -126,6 +156,178 @@ export default function HomeScreen() {
     const sessionId = generateSessionId();
     navigation.navigate("QRScanner", { sessionId });
   };
+
+  const handleDisconnect = async () => {
+    if (Platform.OS !== "web") {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    cleanup?.();
+  };
+
+  const handleSignConfirm = async () => {
+    if (!pendingSignRequest || !solanaKeypair || !sendSignResponse) {
+      console.log('[SignRequest] Missing required data');
+      return;
+    }
+
+    try {
+      const { action, mint, amount } = pendingSignRequest;
+      console.log('[SignRequest] Processing:', action, mint, amount);
+
+      let result;
+      if (action === 'compress') {
+        result = await compressTokens(solanaKeypair, mint, amount);
+      } else {
+        result = await decompressTokens(solanaKeypair, mint, amount);
+      }
+
+      console.log('[SignRequest] Result:', result);
+      sendSignResponse(action, result.success, result.signature, result.error);
+
+      if (Platform.OS !== "web") {
+        if (result.success) {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
+      }
+    } catch (error) {
+      console.error('[SignRequest] Error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      sendSignResponse(pendingSignRequest.action, false, null, errorMessage);
+    } finally {
+      clearPendingSignRequest?.();
+    }
+  };
+
+  const handleSignCancel = () => {
+    if (pendingSignRequest && sendSignResponse) {
+      sendSignResponse(pendingSignRequest.action, false, null, 'User cancelled');
+    }
+    clearPendingSignRequest?.();
+  };
+
+  const getSyncStatusText = () => {
+    if (isDashboardDisconnected) {
+      if (dashboardDisconnect?.reason === "user_logout") {
+        return "Dashboard Logged Out";
+      }
+      if (dashboardDisconnect?.reason === "session_expired") {
+        return "Session Expired";
+      }
+      return "Dashboard Disconnected";
+    }
+    if (isConnected) return "Dashboard Synced";
+    if (isFailed) return "Connection Failed";
+    if (isConnecting) return "Syncing...";
+    return "Disconnected";
+  };
+
+  const getSyncStatusColor = () => {
+    if (isDashboardDisconnected) return "failed";
+    if (isConnected) return "connected";
+    if (isFailed) return "failed";
+    return "syncing";
+  };
+
+  if (shouldShowConnectedUI) {
+    return (
+      <View style={styles.root}>
+        <View style={styles.backgroundWrapper}>
+          <Image
+            source={require("../../assets/images/home-background.png")}
+            style={styles.backgroundImage}
+            contentFit="contain"
+          />
+        </View>
+
+        <View
+          style={[
+            styles.container,
+            {
+              paddingTop: insets.top + Spacing["3xl"],
+              paddingBottom: insets.bottom,
+            },
+          ]}
+        >
+          <View style={styles.header}>
+            <Text style={styles.title}>GRIPLOCK.</Text>
+            <Text style={[styles.subtitle, { color: "#06B040" }]}>Connected</Text>
+          </View>
+
+          <View style={styles.centerContent}>
+            <View style={styles.textContainer}>
+              <Text style={styles.tagline}>Ephemeral Wallet System</Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.disconnectButtonSmall,
+                  pressed && styles.disconnectButtonSmallPressed,
+                ]}
+                onPress={handleDisconnect}
+                testID="button-disconnect"
+              >
+                <Text style={styles.disconnectButtonSmallText}>Disconnect</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.bottomNavContainer}>
+            <View style={styles.bottomNavWrapper}>
+              <Svg
+                width="100%"
+                height={100}
+                viewBox="0 0 428 100"
+                preserveAspectRatio="xMidYMid meet"
+                fill="none"
+              >
+                <Path
+                  d="M249.215 30.7012H405.727L428 50.3655"
+                  stroke="#747474"
+                  strokeWidth={0.5}
+                />
+                <Path
+                  d="M178.785 30.9014H22.273L0.000100315 50.5657"
+                  stroke="#747474"
+                  strokeWidth={0.5}
+                />
+                <Circle
+                  cx={213.9}
+                  cy={34.9142}
+                  r={34.7135}
+                  stroke="#06B040"
+                  strokeWidth={0.5}
+                  fill="transparent"
+                />
+              </Svg>
+
+              <View style={styles.navIconsOverlayWrapper}>
+                <View style={styles.navIconsOverlay}>
+                  <Pressable style={styles.leftNavButton}>
+                    <GridIcon size={22} color={Colors.dark.text} />
+                  </Pressable>
+
+                  <Pressable style={styles.rightNavButton}>
+                    <UserIcon size={22} color={Colors.dark.text} />
+                  </Pressable>
+                </View>
+
+                <View style={styles.connectedIndicatorContainer}>
+                  <CheckIcon size={40} />
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <SignRequestModal
+          visible={!!pendingSignRequest}
+          request={pendingSignRequest ?? null}
+          onConfirm={handleSignConfirm}
+          onCancel={handleSignCancel}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -218,6 +420,13 @@ export default function HomeScreen() {
           </View>
         </View>
       </View>
+
+      <SignRequestModal
+        visible={!!pendingSignRequest}
+        request={pendingSignRequest ?? null}
+        onConfirm={handleSignConfirm}
+        onCancel={handleSignCancel}
+      />
     </View>
   );
 }
@@ -338,5 +547,97 @@ const styles = StyleSheet.create({
   },
   scanButtonPressed: {
     opacity: 0.7,
+  },
+  connectedContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkIconContainer: {
+    marginBottom: Spacing["2xl"],
+  },
+  connectedTitle: {
+    fontFamily: "AstroSpace",
+    fontSize: 20,
+    color: "#FFFFFF",
+    textAlign: "center",
+    marginBottom: Spacing.lg,
+  },
+  connectedSubtitle: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.5)",
+    textAlign: "center",
+  },
+  bottomSection: {
+    gap: Spacing.lg,
+    paddingBottom: Spacing.xl,
+  },
+  syncStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+  },
+  syncDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#06B040",
+  },
+  syncDotConnected: {
+    backgroundColor: "#06B040",
+  },
+  syncDotFailed: {
+    backgroundColor: "#EF8300",
+  },
+  syncText: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: "#06B040",
+  },
+  syncTextConnected: {
+    color: "#06B040",
+  },
+  syncTextFailed: {
+    color: "#EF8300",
+  },
+  disconnectButton: {
+    borderWidth: 1,
+    borderColor: "#484848",
+    borderRadius: 8,
+    paddingVertical: Spacing.md,
+    alignItems: "center",
+  },
+  disconnectButtonPressed: {
+    opacity: 0.7,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  },
+  disconnectButtonText: {
+    fontFamily: Fonts.circular.medium,
+    fontSize: 14,
+    color: "#A4BAD2",
+  },
+  disconnectButtonSmall: {
+    borderWidth: 1,
+    borderColor: "#484848",
+    borderRadius: 6,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
+  },
+  disconnectButtonSmallPressed: {
+    opacity: 0.7,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  },
+  disconnectButtonSmallText: {
+    fontFamily: Fonts.circular.medium,
+    fontSize: 13,
+    color: "#A4BAD2",
+  },
+  connectedIndicatorContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: -28,
   },
 });
