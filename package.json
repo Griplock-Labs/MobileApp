@@ -71,6 +71,7 @@
     "react-native-webrtc": "^124.0.7",
     "react-native-worklets": "0.5.1",
     "tsx": "^4.21.0",
+    "tweetnacl": "^1.0.3",
     "ws": "^8.19.0",
     "zod": "^3.24.2",
     "zod-validation-error": "^3.4.0"

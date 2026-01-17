@@ -5,7 +5,6 @@ import {
   Modal,
   StyleSheet,
   Platform,
-  ActivityIndicator,
   Pressable,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -18,6 +17,7 @@ import Animated, {
 
 import { Colors, Fonts, Spacing, BorderRadius } from '@/constants/theme';
 import { SignRequest } from '@/context/WebRTCContext';
+import { ASCIILoader } from '@/components/ASCIILoader';
 
 interface SignRequestModalProps {
   visible: boolean;
@@ -76,10 +76,29 @@ export default function SignRequestModal({
   if (!request) return null;
 
   const isCompress = request.action === 'compress';
-  const actionTitle = isCompress ? 'Hide Balance' : 'Show Balance';
-  const actionDescription = isCompress
-    ? 'Make your token balance private and hidden from public view.'
-    : 'Make your token balance visible and publicly accessible.';
+  const isPrivateSend = request.action === 'private_send';
+  const isPrivateDeposit = request.action === 'private_deposit';
+  const isPrivateWithdraw = request.action === 'private_withdraw';
+  const isPrivateAction = isPrivateSend || isPrivateDeposit || isPrivateWithdraw;
+  
+  const getActionTitle = () => {
+    if (isPrivateSend) return 'Private Send';
+    if (isPrivateDeposit) return 'Private Deposit';
+    if (isPrivateWithdraw) return 'Private Withdraw';
+    if (isCompress) return 'Hide Balance';
+    return 'Show Balance';
+  };
+  
+  const getActionDescription = () => {
+    if (isPrivateSend) return 'Send tokens privately without leaving a trace on-chain.';
+    if (isPrivateDeposit) return 'Deposit tokens into private pool for anonymous transfers.';
+    if (isPrivateWithdraw) return 'Withdraw tokens from private pool to your wallet.';
+    if (isCompress) return 'Make your token balance private and hidden from public view.';
+    return 'Make your token balance visible and publicly accessible.';
+  };
+  
+  const actionTitle = getActionTitle();
+  const actionDescription = getActionDescription();
 
   return (
     <Modal
@@ -91,8 +110,8 @@ export default function SignRequestModal({
       <View style={styles.overlay}>
         <Animated.View style={[styles.container, animatedStyle]}>
           <View style={styles.header}>
-            <View style={[styles.iconContainer, isCompress ? styles.iconCompress : styles.iconDecompress]}>
-              <Text style={styles.iconText}>{isCompress ? '🔒' : '🔓'}</Text>
+            <View style={[styles.iconContainer, isPrivateAction ? styles.iconPrivateSend : (isCompress ? styles.iconCompress : styles.iconDecompress)]}>
+              <Text style={styles.iconText}>{isPrivateAction ? '🔐' : (isCompress ? '🔒' : '🔓')}</Text>
             </View>
             <Text style={styles.title}>{actionTitle}</Text>
           </View>
@@ -108,6 +127,14 @@ export default function SignRequestModal({
               <Text style={styles.detailLabel}>Amount</Text>
               <Text style={styles.detailValue}>{request.amount} {request.symbol}</Text>
             </View>
+            {isPrivateAction && request.recipient ? (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>To</Text>
+                <Text style={styles.detailValueRecipient} numberOfLines={1} ellipsizeMode="middle">
+                  {request.recipient}
+                </Text>
+              </View>
+            ) : null}
             <View style={styles.divider} />
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Est. Gas Fee</Text>
@@ -118,7 +145,7 @@ export default function SignRequestModal({
           <View style={styles.buttonContainer}>
             {isProcessing ? (
               <View style={styles.processingContainer}>
-                <ActivityIndicator size="large" color={theme.primary} />
+                <ASCIILoader size="large" />
                 <Text style={styles.processingText}>Processing transaction...</Text>
               </View>
             ) : (
@@ -173,6 +200,9 @@ const styles = StyleSheet.create({
   iconDecompress: {
     backgroundColor: 'rgba(6, 176, 64, 0.2)',
   },
+  iconPrivateSend: {
+    backgroundColor: 'rgba(155, 89, 182, 0.2)',
+  },
   iconText: {
     fontSize: 28,
   },
@@ -216,6 +246,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bodyMedium,
     fontSize: 14,
     color: '#EF8300',
+  },
+  detailValueRecipient: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 12,
+    color: '#06B040',
+    maxWidth: 160,
   },
   divider: {
     height: 1,

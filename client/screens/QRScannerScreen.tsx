@@ -6,7 +6,6 @@ import {
   Pressable,
   Text,
   Linking,
-  ActivityIndicator,
   Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +29,7 @@ import { Colors, Spacing, Fonts, Typography, BorderRadius } from "@/constants/th
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
 import ScreenHeader from "@/components/ScreenHeader";
+import { ASCIILoader } from "@/components/ASCIILoader";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "QRScanner">;
 type RouteProps = RouteProp<RootStackParamList, "QRScanner">;
@@ -292,7 +292,7 @@ export default function QRScannerScreen() {
       <View style={styles.container}>
         <ScreenHeader showBack={false} />
         <View style={styles.permissionContainer}>
-          <ActivityIndicator size="large" color={Colors.dark.text} />
+          <ASCIILoader size="large" />
           <Text style={styles.loadingText}>Loading camera...</Text>
         </View>
       </View>
@@ -351,7 +351,7 @@ export default function QRScannerScreen() {
         <ScreenHeader leftText="back" rightText="Connecting..." showBack={false} />
 
         <View style={styles.permissionContainer}>
-          <ActivityIndicator size="large" color={Colors.dark.text} />
+          <ASCIILoader size="large" />
           <Text style={styles.permissionTitle}>Establishing Connection</Text>
           <Text style={styles.permissionText}>
             Connecting to your GRIPLOCK dashboard...

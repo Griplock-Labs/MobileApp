@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, StyleSheet, Platform, Pressable, Text, ActivityIndicator } from "react-native";
+import { View, StyleSheet, Platform, Pressable, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -22,6 +22,7 @@ import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
 import { compressTokens, decompressTokens } from "@/lib/zk-compression";
 import ScreenHeader from "@/components/ScreenHeader";
+import { ASCIILoader } from "@/components/ASCIILoader";
 
 let NfcManager: any = null;
 let NfcTech: any = null;
@@ -57,11 +58,28 @@ function GriplockLogo() {
   );
 }
 
-function LockIcon({ isCompress }: { isCompress: boolean }) {
-  const color = isCompress ? "#A4BAD2" : "#06B040";
+function LockIcon({ isCompress, isPrivateSend }: { isCompress: boolean; isPrivateSend?: boolean }) {
+  const color = isPrivateSend ? "#06B040" : (isCompress ? "#A4BAD2" : "#06B040");
   return (
     <Svg width={48} height={48} viewBox="0 0 24 24" fill="none">
-      {isCompress ? (
+      {isPrivateSend ? (
+        <>
+          <Path
+            d="M12 2L2 7l10 5 10-5-10-5z"
+            stroke={color}
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <Path
+            d="M2 17l10 5 10-5M2 12l10 5 10-5"
+            stroke={color}
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      ) : isCompress ? (
         <Path
           d="M8 11V7a4 4 0 1 1 8 0v4M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"
           stroke={color}
@@ -251,14 +269,67 @@ export default function SignConfirmScreen() {
     setIsProcessing(true);
 
     try {
-      const { action, mint, amount, requestId } = currentRequest;
+      const { action, mint, amount, requestId, unsignedTx } = currentRequest;
       console.log('[SignConfirm] Processing:', action, 'mint:', mint, 'amount:', amount);
       
+      const isPrivateActionType = action === "private_send" || action === "private_deposit" || action === "private_withdraw";
+      
       let result;
-      if (action === "compress") {
-        result = await compressTokens(currentKeypair, mint, amount);
+      
+      if (isPrivateActionType) {
+        if (!unsignedTx) {
+          result = {
+            success: false,
+            signature: null,
+            error: "Privacy Cash integration coming soon. Dashboard needs to send transaction for signing."
+          };
+        } else {
+          try {
+            const { VersionedTransaction, Connection } = await import("@solana/web3.js");
+            const txBuffer = Buffer.from(unsignedTx, "base64");
+            const transaction = VersionedTransaction.deserialize(txBuffer);
+            transaction.sign([currentKeypair]);
+            
+            if (action === "private_send") {
+              const signedTxBase64 = Buffer.from(transaction.serialize()).toString("base64");
+              result = {
+                success: true,
+                signature: signedTxBase64,
+                error: null
+              };
+            } else {
+              const HELIUS_RPC_URL = process.env.EXPO_PUBLIC_HELIUS_RPC_URL || process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+              const connection = new Connection(HELIUS_RPC_URL, 'confirmed');
+              
+              console.log('[SignConfirm] Broadcasting', action, 'transaction...');
+              const txSignature = await connection.sendTransaction(transaction);
+              console.log('[SignConfirm] Tx sent:', txSignature, '- waiting for confirmation...');
+              
+              const confirmation = await connection.confirmTransaction(txSignature, 'confirmed');
+              if (confirmation.value.err) {
+                throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+              }
+              
+              console.log('[SignConfirm] Transaction confirmed:', txSignature);
+              result = {
+                success: true,
+                signature: txSignature,
+                error: null
+              };
+            }
+          } catch (signError) {
+            console.error('[SignConfirm] Failed to process transaction:', signError);
+            result = {
+              success: false,
+              signature: null,
+              error: signError instanceof Error ? signError.message : "Failed to process transaction"
+            };
+          }
+        }
+      } else if (action === "compress") {
+        result = await compressTokens(currentKeypair, mint || "", amount || 0);
       } else {
-        result = await decompressTokens(currentKeypair, mint, amount);
+        result = await decompressTokens(currentKeypair, mint || "", amount || 0);
       }
       
       console.log('[SignConfirm] Transaction result:', result);
@@ -266,7 +337,8 @@ export default function SignConfirmScreen() {
       if (result.success && result.signature) {
         sendSignResult(requestId, action, true, result.signature);
         setIsSuccess(true);
-        setResultMessage("Transaction confirmed!");
+        const successMsg = action === "private_send" ? "Transaction signed!" : "Transaction confirmed!";
+        setResultMessage(successMsg);
         
         if (Platform.OS !== "web") {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -462,8 +534,21 @@ export default function SignConfirmScreen() {
   }
 
   const isCompress = pendingSignRequest.action === "compress";
-  const actionTitle = isCompress ? "HIDE BALANCE" : "SHOW BALANCE";
-  const actionColor = isCompress ? "#A4BAD2" : "#06B040";
+  const isPrivateSend = pendingSignRequest.action === "private_send";
+  const isPrivateDeposit = pendingSignRequest.action === "private_deposit";
+  const isPrivateWithdraw = pendingSignRequest.action === "private_withdraw";
+  const isPrivateAction = isPrivateSend || isPrivateDeposit || isPrivateWithdraw;
+  
+  const getActionTitle = () => {
+    if (isPrivateSend) return "PRIVATE SEND";
+    if (isPrivateDeposit) return "PRIVATE DEPOSIT";
+    if (isPrivateWithdraw) return "PRIVATE WITHDRAW";
+    if (isCompress) return "HIDE BALANCE";
+    return "SHOW BALANCE";
+  };
+  
+  const actionTitle = getActionTitle();
+  const actionColor = isPrivateAction ? "#06B040" : (isCompress ? "#A4BAD2" : "#06B040");
 
   return (
     <View style={styles.container}>
@@ -479,7 +564,7 @@ export default function SignConfirmScreen() {
 
       <View style={styles.content}>
         <View style={styles.actionBadge}>
-          <LockIcon isCompress={isCompress} />
+          <LockIcon isCompress={isCompress} isPrivateSend={isPrivateAction} />
           <Text style={[styles.actionTitle, { color: actionColor }]}>{actionTitle}</Text>
         </View>
 
@@ -494,6 +579,14 @@ export default function SignConfirmScreen() {
               {pendingSignRequest.amount} {pendingSignRequest.symbol}
             </Text>
           </View>
+          {isPrivateAction && pendingSignRequest.recipient ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>To</Text>
+              <Text style={styles.detailValueRecipient} numberOfLines={1} ellipsizeMode="middle">
+                {pendingSignRequest.recipient}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.divider} />
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Est. Gas Fee</Text>
@@ -516,7 +609,7 @@ export default function SignConfirmScreen() {
           </View>
         ) : isProcessing ? (
           <View style={styles.processingContainer}>
-            <ActivityIndicator size="large" color={theme.primary} />
+            <ASCIILoader size="large" />
             <Text style={styles.processingText}>Processing transaction...</Text>
           </View>
         ) : (
@@ -646,6 +739,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bodyMedium,
     fontSize: 14,
     color: "#EF8300",
+  },
+  detailValueRecipient: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 12,
+    color: "#06B040",
+    maxWidth: 180,
   },
   divider: {
     height: 1,

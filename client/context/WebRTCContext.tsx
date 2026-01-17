@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import {
   RelaySession,
   ConnectionStatus,
@@ -7,10 +7,12 @@ import {
   sendWalletAddress as sendWalletAddressRaw,
   sendAttemptUpdate,
   sendSignResult as sendSignResultRaw,
+  sendEncryptionSignatureResult,
   cleanupSession,
   sendDisconnect as sendDisconnectRaw,
 } from '@/lib/websocket-relay';
 import { Keypair } from '@solana/web3.js';
+import nacl from 'tweetnacl';
 
 export type DisconnectReason = 'peer_closed' | 'connection_failed' | 'room_expired' | 'user_initiated' | 'dashboard_disconnected';
 
@@ -28,11 +30,14 @@ export interface PeerDisconnectInfo {
 export interface SignRequest {
   type: 'sign_request';
   requestId: string;
-  action: 'compress' | 'decompress';
-  mint: string;
-  symbol: string;
-  amount: number;
+  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw';
+  mint?: string;
+  symbol?: string;
+  amount?: number;
   timestamp: number;
+  recipient?: string;
+  unsignedTx?: string;
+  message?: string;
 }
 
 interface WebRTCContextValue {
@@ -51,7 +56,7 @@ interface WebRTCContextValue {
   setWalletAddress: (address: string) => void;
   setSolanaKeypair: (keypair: Keypair) => void;
   notifyAttemptUpdate: (attempts: number, maxAttempts: number, isLockedOut: boolean, lockoutEndTime?: number) => boolean;
-  sendSignResult: (requestId: string, action: 'compress' | 'decompress', success: boolean, signature?: string, error?: string) => boolean;
+  sendSignResult: (requestId: string, action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw', success: boolean, signature?: string, error?: string) => boolean;
   sendDisconnect: () => boolean;
   clearPendingSignRequest: () => void;
   cleanup: (sendDisconnectMsg?: boolean) => void;
@@ -73,10 +78,15 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
   });
   const [pendingSignRequest, setPendingSignRequest] = useState<SignRequest | null>(null);
   const [solanaKeypair, setSolanaKeypairState] = useState<Keypair | null>(null);
+  const solanaKeypairRef = useRef<Keypair | null>(null);
   const [peerDisconnect, setPeerDisconnect] = useState<PeerDisconnectInfo>({
     reason: null,
     timestamp: null,
   });
+  
+  useEffect(() => {
+    solanaKeypairRef.current = solanaKeypair;
+  }, [solanaKeypair]);
 
   const cleanupInternal = useCallback((sendDisconnectMsg = true) => {
     cleanupSession(sessionRef.current, sendDisconnectMsg);
@@ -124,7 +134,48 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
             if (msg.type === 'sign_request') {
               console.log('[Relay] Sign request received:', msg);
               const signReq = message as SignRequest;
-              setPendingSignRequest(signReq);
+              
+              if (signReq.action === 'get_encryption_signature') {
+                console.log('[Relay] Auto-handling get_encryption_signature');
+                const keypair = solanaKeypairRef.current;
+                if (keypair) {
+                  try {
+                    const messageText = "GRIPLOCK_ENCRYPTION_KEY";
+                    const messageBytes = new TextEncoder().encode(messageText);
+                    const signature = nacl.sign.detached(messageBytes, keypair.secretKey);
+                    const signatureBase64 = Buffer.from(signature).toString('base64');
+                    console.log('[Relay] Encryption signature generated successfully');
+                    sendSignResultRaw(sessionRef.current, signReq.requestId, 'get_encryption_signature', true, signatureBase64);
+                  } catch (error) {
+                    console.error('[Relay] Failed to sign encryption message:', error);
+                    sendSignResultRaw(sessionRef.current, signReq.requestId, 'get_encryption_signature', false, undefined, 'Failed to sign message');
+                  }
+                } else {
+                  console.error('[Relay] No keypair available for encryption signature');
+                  sendSignResultRaw(sessionRef.current, signReq.requestId, 'get_encryption_signature', false, undefined, 'Wallet not connected');
+                }
+              } else if (signReq.action === 'encryption_signature') {
+                console.log('[Relay] Auto-handling encryption_signature');
+                const keypair = solanaKeypairRef.current;
+                if (keypair) {
+                  try {
+                    const messageText = signReq.message || "GRIPLOCK_PRIVACY_CASH_ENCRYPTION_KEY_V1";
+                    const messageBytes = new TextEncoder().encode(messageText);
+                    const signature = nacl.sign.detached(messageBytes, keypair.secretKey);
+                    const signatureBase64 = Buffer.from(signature).toString('base64');
+                    console.log('[Relay] Encryption signature (v2) generated successfully');
+                    sendEncryptionSignatureResult(sessionRef.current, signReq.requestId, true, signatureBase64);
+                  } catch (error) {
+                    console.error('[Relay] Failed to sign encryption message:', error);
+                    sendEncryptionSignatureResult(sessionRef.current, signReq.requestId, false, undefined, 'Failed to sign message');
+                  }
+                } else {
+                  console.error('[Relay] No keypair available for encryption signature');
+                  sendEncryptionSignatureResult(sessionRef.current, signReq.requestId, false, undefined, 'Wallet not connected');
+                }
+              } else {
+                setPendingSignRequest(signReq);
+              }
             }
           }
         },
@@ -179,7 +230,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
 
   const sendSignResult = useCallback((
     requestId: string,
-    action: 'compress' | 'decompress',
+    action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw',
     success: boolean,
     signature?: string,
     error?: string

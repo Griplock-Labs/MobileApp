@@ -225,16 +225,17 @@ export function sendAttemptUpdate(
 export interface SignResult {
   type: 'sign_result';
   requestId: string;
-  action: 'compress' | 'decompress';
+  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw';
   success: boolean;
   signature?: string;
+  encryptionSignature?: string;
   error?: string;
 }
 
 export function sendSignResult(
   session: RelaySession,
   requestId: string,
-  action: 'compress' | 'decompress',
+  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw',
   success: boolean,
   signature?: string,
   error?: string
@@ -254,6 +255,31 @@ export function sendSignResult(
   }
 
   console.log('[Relay] Sending sign_result:', payload);
+  return sendRelay(session, payload);
+}
+
+export function sendEncryptionSignatureResult(
+  session: RelaySession,
+  requestId: string,
+  success: boolean,
+  encryptionSignature?: string,
+  error?: string
+): boolean {
+  const payload: SignResult = {
+    type: 'sign_result',
+    requestId,
+    action: 'encryption_signature',
+    success,
+  };
+
+  if (success && encryptionSignature) {
+    payload.encryptionSignature = encryptionSignature;
+  }
+  if (!success && error) {
+    payload.error = error;
+  }
+
+  console.log('[Relay] Sending encryption_signature result:', payload);
   return sendRelay(session, payload);
 }
 

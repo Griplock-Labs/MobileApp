@@ -6,6 +6,7 @@ import {
   TOKEN_PROGRAM_ID, 
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createSyncNativeInstruction,
+  createCloseAccountInstruction,
   NATIVE_MINT
 } from '@solana/spl-token';
 
@@ -258,6 +259,52 @@ export async function decompressTokens(
     const signature = typeof result === 'string' ? result : String(result);
 
     console.log('[ZK] Decompress transaction confirmed:', signature);
+
+    if (isNativeSol) {
+      console.log('[ZK] Native SOL detected, will close wSOL account to unwrap...');
+      try {
+        const wsolAta = getAssociatedTokenAddressSync(NATIVE_MINT, keypair.publicKey);
+        console.log('[ZK] wSOL ATA address:', wsolAta.toBase58());
+        
+        let wsolAccountExists = false;
+        try {
+          const wsolAccount = await getAccount(rpc, wsolAta);
+          console.log('[ZK] wSOL account balance:', wsolAccount.amount.toString());
+          wsolAccountExists = true;
+        } catch (checkError: any) {
+          console.log('[ZK] wSOL account check error:', checkError?.name || checkError);
+          if (checkError?.name === 'TokenAccountNotFoundError') {
+            console.log('[ZK] wSOL account does not exist, nothing to close');
+            wsolAccountExists = false;
+          }
+        }
+        
+        if (wsolAccountExists) {
+          console.log('[ZK] Closing wSOL account...');
+          const closeTx = new Transaction();
+          closeTx.add(
+            createCloseAccountInstruction(
+              wsolAta,
+              keypair.publicKey,
+              keypair.publicKey,
+              [],
+              TOKEN_PROGRAM_ID
+            )
+          );
+          
+          const { blockhash } = await rpc.getLatestBlockhash();
+          closeTx.recentBlockhash = blockhash;
+          closeTx.feePayer = keypair.publicKey;
+          closeTx.sign(keypair);
+          
+          const closeSig = await rpc.sendRawTransaction(closeTx.serialize());
+          await rpc.confirmTransaction(closeSig);
+          console.log('[ZK] wSOL account closed, SOL unwrapped successfully:', closeSig);
+        }
+      } catch (closeError: any) {
+        console.warn('[ZK] Failed to close wSOL account:', closeError?.message || closeError);
+      }
+    }
 
     return {
       success: true,
