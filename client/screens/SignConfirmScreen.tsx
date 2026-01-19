@@ -269,10 +269,10 @@ export default function SignConfirmScreen() {
     setIsProcessing(true);
 
     try {
-      const { action, mint, amount, requestId, unsignedTx } = currentRequest;
-      console.log('[SignConfirm] Processing:', action, 'mint:', mint, 'amount:', amount);
+      const { action, mint, amount, requestId, unsignedTx, rpcUrl } = currentRequest;
+      console.log('[SignConfirm] Processing:', action, 'mint:', mint, 'amount:', amount, 'rpcUrl:', rpcUrl);
       
-      const isPrivateActionType = action === "private_send" || action === "private_deposit" || action === "private_withdraw";
+      const isPrivateActionType = action === "private_send" || action === "private_deposit" || action === "private_withdraw" || action === "privacy_deposit_full" || action === "privacy_withdraw_full";
       
       let result;
       
@@ -281,7 +281,7 @@ export default function SignConfirmScreen() {
           result = {
             success: false,
             signature: null,
-            error: "Privacy Cash integration coming soon. Dashboard needs to send transaction for signing."
+            error: "Missing unsignedTx from dashboard"
           };
         } else {
           try {
@@ -298,10 +298,10 @@ export default function SignConfirmScreen() {
                 error: null
               };
             } else {
-              const HELIUS_RPC_URL = process.env.EXPO_PUBLIC_HELIUS_RPC_URL || process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
-              const connection = new Connection(HELIUS_RPC_URL, 'confirmed');
+              const connectionUrl = rpcUrl || process.env.EXPO_PUBLIC_HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+              const connection = new Connection(connectionUrl, 'confirmed');
               
-              console.log('[SignConfirm] Broadcasting', action, 'transaction...');
+              console.log('[SignConfirm] Broadcasting', action, 'transaction to', connectionUrl);
               const txSignature = await connection.sendTransaction(transaction);
               console.log('[SignConfirm] Tx sent:', txSignature, '- waiting for confirmation...');
               
@@ -535,20 +535,29 @@ export default function SignConfirmScreen() {
 
   const isCompress = pendingSignRequest.action === "compress";
   const isPrivateSend = pendingSignRequest.action === "private_send";
-  const isPrivateDeposit = pendingSignRequest.action === "private_deposit";
-  const isPrivateWithdraw = pendingSignRequest.action === "private_withdraw";
+  const isPrivateDeposit = pendingSignRequest.action === "private_deposit" || pendingSignRequest.action === "privacy_deposit_full";
+  const isPrivateWithdraw = pendingSignRequest.action === "private_withdraw" || pendingSignRequest.action === "privacy_withdraw_full";
   const isPrivateAction = isPrivateSend || isPrivateDeposit || isPrivateWithdraw;
   
   const getActionTitle = () => {
-    if (isPrivateSend) return "PRIVATE SEND";
-    if (isPrivateDeposit) return "PRIVATE DEPOSIT";
-    if (isPrivateWithdraw) return "PRIVATE WITHDRAW";
-    if (isCompress) return "HIDE BALANCE";
-    return "SHOW BALANCE";
+    if (isPrivateSend) return "VERIFY YOUR PRIVATE SEND";
+    if (isPrivateDeposit) return "VERIFY YOUR PRIVATE DEPOSIT";
+    if (isPrivateWithdraw) return "VERIFY YOUR PRIVATE WITHDRAW";
+    if (isCompress) return "VERIFY YOUR HIDE BALANCE";
+    return "VERIFY YOUR SHOW BALANCE";
+  };
+  
+  const getActionDescription = () => {
+    const symbol = pendingSignRequest.symbol || "TOKEN";
+    const amount = pendingSignRequest.amount ?? "-";
+    const actionName = isPrivateSend ? "Private send" : 
+                       isPrivateDeposit ? "Private deposit" : 
+                       isPrivateWithdraw ? "Private withdraw" : 
+                       isCompress ? "Hide" : "Show";
+    return `${actionName} ${amount} ${symbol} with estimated gas\nfee ${ESTIMATED_GAS_FEE} SOL`;
   };
   
   const actionTitle = getActionTitle();
-  const actionColor = isPrivateAction ? "#06B040" : (isCompress ? "#A4BAD2" : "#06B040");
 
   return (
     <View style={styles.container}>
@@ -560,38 +569,13 @@ export default function SignConfirmScreen() {
         />
       </View>
 
-      <ScreenHeader leftText="cancel" rightText="Confirm" onBack={handleBackPress} />
+      <ScreenHeader leftText="back" rightText="Tap card" onBack={handleBackPress} />
 
       <View style={styles.content}>
-        <View style={styles.actionBadge}>
-          <LockIcon isCompress={isCompress} isPrivateSend={isPrivateAction} />
-          <Text style={[styles.actionTitle, { color: actionColor }]}>{actionTitle}</Text>
-        </View>
-
-        <View style={styles.detailsContainer}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Token</Text>
-            <Text style={styles.detailValue}>{pendingSignRequest.symbol}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Amount</Text>
-            <Text style={styles.detailValue}>
-              {pendingSignRequest.amount} {pendingSignRequest.symbol}
-            </Text>
-          </View>
-          {isPrivateAction && pendingSignRequest.recipient ? (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>To</Text>
-              <Text style={styles.detailValueRecipient} numberOfLines={1} ellipsizeMode="middle">
-                {pendingSignRequest.recipient}
-              </Text>
-            </View>
-          ) : null}
-          <View style={styles.divider} />
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Est. Gas Fee</Text>
-            <Text style={styles.detailValueFee}>~{ESTIMATED_GAS_FEE} SOL</Text>
-          </View>
+        {/* Fixed: Title + Description */}
+        <View style={styles.headerSection}>
+          <Text style={styles.verifyTitle}>{actionTitle}</Text>
+          <Text style={styles.verifyDescription}>{getActionDescription()}</Text>
         </View>
 
         {resultMessage ? (
@@ -614,6 +598,10 @@ export default function SignConfirmScreen() {
           </View>
         ) : (
           <>
+            {/* Spacer */}
+            <View style={styles.spacer} />
+
+            {/* NFC Illustration */}
             <View style={styles.nfcContainer}>
               <View style={styles.illustrationWrapper}>
                 <Animated.View style={[styles.phoneBase, phoneFloatStyle]}>
@@ -625,6 +613,10 @@ export default function SignConfirmScreen() {
               </View>
             </View>
 
+            {/* Spacer */}
+            <View style={styles.spacer} />
+
+            {/* TAP YOUR CARD Section */}
             <View style={styles.textContainer}>
               <Animated.Text style={[styles.title, pulseStyle]}>TAP YOUR CARD{"\n"}TO CONFIRM</Animated.Text>
               <Text style={styles.statusText}>{scanStatus}</Text>
@@ -659,9 +651,8 @@ export default function SignConfirmScreen() {
               </View>
             ) : null}
 
-            <Pressable style={styles.cancelButton} onPress={handleCancel} testID="button-cancel">
-              <Text style={styles.cancelButtonText}>Cancel Transaction</Text>
-            </Pressable>
+            {/* Fixed: Bottom spacer */}
+            <View style={styles.bottomSpacer} />
           </>
         )}
       </View>
@@ -684,8 +675,33 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center",
     paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xl,
+  },
+  headerSection: {
+    alignItems: "center",
+    marginBottom: Spacing.lg,
+  },
+  verifyTitle: {
+    fontFamily: Fonts.heading,
+    fontSize: 24,
+    color: Colors.dark.text,
+    textAlign: "center",
+    letterSpacing: 1,
+    marginBottom: Spacing.md,
+  },
+  verifyDescription: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: theme.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  spacer: {
+    flex: 1,
+  },
+  bottomSpacer: {
+    height: Spacing["2xl"],
   },
   noRequestContent: {
     flex: 1,

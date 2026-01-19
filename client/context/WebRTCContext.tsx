@@ -7,7 +7,6 @@ import {
   sendWalletAddress as sendWalletAddressRaw,
   sendAttemptUpdate,
   sendSignResult as sendSignResultRaw,
-  sendEncryptionSignatureResult,
   cleanupSession,
   sendDisconnect as sendDisconnectRaw,
 } from '@/lib/websocket-relay';
@@ -30,7 +29,7 @@ export interface PeerDisconnectInfo {
 export interface SignRequest {
   type: 'sign_request';
   requestId: string;
-  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw';
+  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full';
   mint?: string;
   symbol?: string;
   amount?: number;
@@ -38,6 +37,8 @@ export interface SignRequest {
   recipient?: string;
   unsignedTx?: string;
   message?: string;
+  ownerPublicKey?: string;
+  rpcUrl?: string;
 }
 
 interface WebRTCContextValue {
@@ -56,7 +57,7 @@ interface WebRTCContextValue {
   setWalletAddress: (address: string) => void;
   setSolanaKeypair: (keypair: Keypair) => void;
   notifyAttemptUpdate: (attempts: number, maxAttempts: number, isLockedOut: boolean, lockoutEndTime?: number) => boolean;
-  sendSignResult: (requestId: string, action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw', success: boolean, signature?: string, error?: string) => boolean;
+  sendSignResult: (requestId: string, action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full', success: boolean, signature?: string, error?: string) => boolean;
   sendDisconnect: () => boolean;
   clearPendingSignRequest: () => void;
   cleanup: (sendDisconnectMsg?: boolean) => void;
@@ -163,15 +164,15 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
                     const messageBytes = new TextEncoder().encode(messageText);
                     const signature = nacl.sign.detached(messageBytes, keypair.secretKey);
                     const signatureBase64 = Buffer.from(signature).toString('base64');
-                    console.log('[Relay] Encryption signature (v2) generated successfully');
-                    sendEncryptionSignatureResult(sessionRef.current, signReq.requestId, true, signatureBase64);
+                    console.log('[Relay] Encryption signature generated successfully');
+                    sendSignResultRaw(sessionRef.current, signReq.requestId, 'encryption_signature', true, signatureBase64);
                   } catch (error) {
                     console.error('[Relay] Failed to sign encryption message:', error);
-                    sendEncryptionSignatureResult(sessionRef.current, signReq.requestId, false, undefined, 'Failed to sign message');
+                    sendSignResultRaw(sessionRef.current, signReq.requestId, 'encryption_signature', false, undefined, 'Failed to sign message');
                   }
                 } else {
                   console.error('[Relay] No keypair available for encryption signature');
-                  sendEncryptionSignatureResult(sessionRef.current, signReq.requestId, false, undefined, 'Wallet not connected');
+                  sendSignResultRaw(sessionRef.current, signReq.requestId, 'encryption_signature', false, undefined, 'Wallet not connected');
                 }
               } else {
                 setPendingSignRequest(signReq);
@@ -230,7 +231,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
 
   const sendSignResult = useCallback((
     requestId: string,
-    action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw',
+    action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full',
     success: boolean,
     signature?: string,
     error?: string

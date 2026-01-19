@@ -225,7 +225,7 @@ export function sendAttemptUpdate(
 export interface SignResult {
   type: 'sign_result';
   requestId: string;
-  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw';
+  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full';
   success: boolean;
   signature?: string;
   encryptionSignature?: string;
@@ -235,7 +235,7 @@ export interface SignResult {
 export function sendSignResult(
   session: RelaySession,
   requestId: string,
-  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw',
+  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full',
   success: boolean,
   signature?: string,
   error?: string
