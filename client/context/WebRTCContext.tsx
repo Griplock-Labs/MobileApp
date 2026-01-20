@@ -9,6 +9,7 @@ import {
   sendSignResult as sendSignResultRaw,
   cleanupSession,
   sendDisconnect as sendDisconnectRaw,
+  getDashboardBaseUrl,
 } from '@/lib/websocket-relay';
 import { Keypair } from '@solana/web3.js';
 import nacl from 'tweetnacl';
@@ -41,6 +42,16 @@ export interface SignRequest {
   rpcUrl?: string;
 }
 
+export interface CardActionRequest {
+  type: 'card_action_request';
+  actionId: string;
+  actionType: 'lock' | 'unlock';
+  cardId: string;
+  cardName: string;
+  maskedPan: string;
+  timestamp?: number;
+}
+
 interface WebRTCContextValue {
   session: RelaySession;
   status: ConnectionStatus;
@@ -49,6 +60,8 @@ interface WebRTCContextValue {
   dashboardDisconnect: DashboardDisconnectInfo;
   peerDisconnect: PeerDisconnectInfo;
   pendingSignRequest: SignRequest | null;
+  pendingCardAction: CardActionRequest | null;
+  dashboardBaseUrl: string;
   solanaKeypair: Keypair | null;
   initializeFromQR: (qrData: string) => Promise<void>;
   setNfcData: (data: string) => void;
@@ -60,6 +73,7 @@ interface WebRTCContextValue {
   sendSignResult: (requestId: string, action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full', success: boolean, signature?: string, error?: string) => boolean;
   sendDisconnect: () => boolean;
   clearPendingSignRequest: () => void;
+  clearPendingCardAction: () => void;
   cleanup: (sendDisconnectMsg?: boolean) => void;
   lastMessage: unknown;
 }
@@ -78,6 +92,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
     timestamp: null,
   });
   const [pendingSignRequest, setPendingSignRequest] = useState<SignRequest | null>(null);
+  const [pendingCardAction, setPendingCardAction] = useState<CardActionRequest | null>(null);
   const [solanaKeypair, setSolanaKeypairState] = useState<Keypair | null>(null);
   const solanaKeypairRef = useRef<Keypair | null>(null);
   const [peerDisconnect, setPeerDisconnect] = useState<PeerDisconnectInfo>({
@@ -99,6 +114,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
     setDashboardDisconnect({ reason: null, address: null, timestamp: null });
     setPeerDisconnect({ reason: null, timestamp: null });
     setPendingSignRequest(null);
+    setPendingCardAction(null);
     setSolanaKeypairState(null);
   }, []);
 
@@ -178,6 +194,12 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
                 setPendingSignRequest(signReq);
               }
             }
+            
+            if (msg.type === 'card_action_request') {
+              console.log('[Relay] Card action request received:', msg);
+              const cardAction = message as CardActionRequest;
+              setPendingCardAction(cardAction);
+            }
           }
         },
         (reason) => {
@@ -243,6 +265,10 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
     setPendingSignRequest(null);
   }, []);
 
+  const clearPendingCardAction = useCallback(() => {
+    setPendingCardAction(null);
+  }, []);
+
   const sendDisconnect = useCallback((): boolean => {
     return sendDisconnectRaw(sessionRef.current);
   }, []);
@@ -259,6 +285,8 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
         dashboardDisconnect,
         peerDisconnect,
         pendingSignRequest,
+        pendingCardAction,
+        dashboardBaseUrl: getDashboardBaseUrl(sessionRef.current.relayUrl),
         solanaKeypair,
         initializeFromQR,
         setNfcData,
@@ -270,6 +298,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
         sendSignResult,
         sendDisconnect,
         clearPendingSignRequest,
+        clearPendingCardAction,
         cleanup,
         lastMessage,
       }}

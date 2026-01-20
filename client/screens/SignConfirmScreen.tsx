@@ -155,7 +155,13 @@ export default function SignConfirmScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RouteProps>();
   const insets = useSafeAreaInsets();
-  const { pendingSignRequest, solanaKeypair, sendSignResult, clearPendingSignRequest, nfcData } = useWebRTC();
+  const { pendingSignRequest, pendingCardAction, solanaKeypair, sendSignResult, clearPendingSignRequest, nfcData } = useWebRTC();
+  
+  useEffect(() => {
+    if (pendingCardAction) {
+      navigation.navigate("CardAction");
+    }
+  }, [pendingCardAction, navigation]);
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);

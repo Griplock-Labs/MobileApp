@@ -120,6 +120,7 @@ export default function HomeScreen() {
   const dashboardDisconnect = webrtc?.dashboardDisconnect;
   const peerDisconnect = webrtc?.peerDisconnect;
   const pendingSignRequest = webrtc?.pendingSignRequest;
+  const pendingCardAction = webrtc?.pendingCardAction;
   const solanaKeypair = webrtc?.solanaKeypair;
   const sendSignResult = webrtc?.sendSignResult;
   const clearPendingSignRequest = webrtc?.clearPendingSignRequest;
@@ -214,6 +215,13 @@ export default function HomeScreen() {
       navigation.navigate("SignConfirm");
     }
   }, [pendingSignRequest, shouldShowConnectedUI, navigation]);
+
+  useEffect(() => {
+    if (pendingCardAction && shouldShowConnectedUI) {
+      console.log('[HomeScreen] Card action request detected, navigating to CardAction');
+      navigation.navigate("CardAction");
+    }
+  }, [pendingCardAction, shouldShowConnectedUI, navigation]);
 
   const getSyncStatusText = () => {
     if (isDashboardDisconnected) {

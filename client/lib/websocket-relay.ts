@@ -4,6 +4,7 @@ export interface RelaySession {
   websocket: WebSocket | null;
   roomId: string | null;
   secret: string | null;
+  relayUrl: string | null;
   status: ConnectionStatus;
   walletSent: boolean;
 }
@@ -13,9 +14,21 @@ export function createInitialSession(): RelaySession {
     websocket: null,
     roomId: null,
     secret: null,
+    relayUrl: null,
     status: 'disconnected',
     walletSent: false,
   };
+}
+
+export function getDashboardBaseUrl(relayUrl: string | null): string {
+  if (!relayUrl) return '';
+  try {
+    const url = new URL(relayUrl);
+    const protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+    return `${protocol}//${url.host}`;
+  } catch {
+    return '';
+  }
 }
 
 interface QRData {
@@ -70,6 +83,7 @@ export async function initializeFromQR(
     const { roomId, secret, relayUrl } = parseQRCode(qrData);
     session.roomId = roomId;
     session.secret = secret;
+    session.relayUrl = relayUrl;
 
     console.log('[Relay] Connecting to:', relayUrl);
     console.log('[Relay] Room ID:', roomId);

@@ -137,7 +137,7 @@ export default function PINInputScreen() {
   const [isLockedOut, setIsLockedOut] = useState(false);
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
   const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const { sendWalletAddress, setWalletAddress, setSolanaKeypair, status: connectionStatus, cleanup, notifyAttemptUpdate } = useWebRTC();
+  const { sendWalletAddress, setWalletAddress, setSolanaKeypair, status: connectionStatus, cleanup, notifyAttemptUpdate, walletAddress: connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction } = useWebRTC();
   
   const shakeAnim = useSharedValue(0);
   const scaleAnim = useSharedValue(1);
@@ -232,6 +232,64 @@ export default function PINInputScreen() {
               throw new Error("Missing required NFC data");
             }
 
+            // Card Action Flow
+            if (route.params?.cardAction) {
+              console.log('[PIN] Card action flow detected');
+              const cardAction = route.params.cardAction;
+              
+              if (!connectedWalletAddress || !dashboardBaseUrl) {
+                throw new Error("Session not active");
+              }
+
+              console.log('[PIN] Deriving wallet address for card action...');
+              const derivedAddress = deriveSolanaAddress(route.params.nfcData, newPin);
+              console.log('[PIN] Derived address:', derivedAddress);
+              console.log('[PIN] Connected wallet:', connectedWalletAddress);
+
+              // Add minimal delay so user can see loading animation
+              await new Promise(resolve => setTimeout(resolve, 1200));
+
+              if (derivedAddress !== connectedWalletAddress) {
+                console.log('[PIN] Wallet mismatch - invalid card or PIN');
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                throw new Error("Invalid card or PIN");
+              }
+
+              console.log('[PIN] Wallet verified, calling API to approve action...');
+              const response = await fetch(
+                `${dashboardBaseUrl}/api/striga/card/action/execute`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    actionId: cardAction.actionId,
+                    approved: true,
+                    walletAddress: connectedWalletAddress,
+                  }),
+                }
+              );
+
+              const data = await response.json();
+              console.log('[PIN] API response:', data);
+
+              if (data.success) {
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+                clearPendingCardAction();
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Home' }],
+                });
+              } else {
+                throw new Error(data.error || "Failed to execute action");
+              }
+              return;
+            }
+
+            // Normal wallet connection flow
             if (connectionStatus !== "connected") {
               console.log('[PIN] ERROR: Not connected, status:', connectionStatus);
               throw new Error("Dashboard not connected");
@@ -294,7 +352,7 @@ export default function PINInputScreen() {
         }, 500);
       });
     }
-  }, [pin, isProcessing, isLockedOut, attempts, navigation, route.params, connectionStatus, sendWalletAddress, setWalletAddress, setSolanaKeypair, shakeAnim, scaleAnim, startLockout, notifyAttemptUpdate]);
+  }, [pin, isProcessing, isLockedOut, attempts, navigation, route.params, connectionStatus, sendWalletAddress, setWalletAddress, setSolanaKeypair, shakeAnim, scaleAnim, startLockout, notifyAttemptUpdate, connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction]);
 
   const renderPinBox = (index: number) => {
     const isFilled = index < pin.length;

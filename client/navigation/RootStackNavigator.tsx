@@ -7,13 +7,27 @@ import QRScannerScreen from "@/screens/QRScannerScreen";
 import NFCReaderScreen from "@/screens/NFCReaderScreen";
 import PINInputScreen from "@/screens/PINInputScreen";
 import SignConfirmScreen from "@/screens/SignConfirmScreen";
+import CardActionScreen from "@/screens/CardActionScreen";
+
+export type CardActionParams = {
+  actionId: string;
+  actionType: 'lock' | 'unlock';
+  cardPan: string;
+  cardholderName: string;
+  expiresAt: string;
+};
 
 export type RootStackParamList = {
   Home: undefined;
   QRScanner: { sessionId: string };
   NFCReader: { sessionId?: string };
-  PINInput: { sessionId: string; nfcData: string };
+  PINInput: { 
+    sessionId: string; 
+    nfcData: string;
+    cardAction?: CardActionParams;
+  };
   SignConfirm: undefined;
+  CardAction: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -61,6 +75,11 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="SignConfirm"
         component={SignConfirmScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CardAction"
+        component={CardActionScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>
