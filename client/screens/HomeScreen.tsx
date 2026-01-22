@@ -121,6 +121,7 @@ export default function HomeScreen() {
   const peerDisconnect = webrtc?.peerDisconnect;
   const pendingSignRequest = webrtc?.pendingSignRequest;
   const pendingCardAction = webrtc?.pendingCardAction;
+  const pendingPrivacyAction = webrtc?.pendingPrivacyAction;
   const solanaKeypair = webrtc?.solanaKeypair;
   const sendSignResult = webrtc?.sendSignResult;
   const clearPendingSignRequest = webrtc?.clearPendingSignRequest;
@@ -222,6 +223,13 @@ export default function HomeScreen() {
       navigation.navigate("CardAction");
     }
   }, [pendingCardAction, shouldShowConnectedUI, navigation]);
+
+  useEffect(() => {
+    if (pendingPrivacyAction && shouldShowConnectedUI) {
+      console.log('[HomeScreen] Privacy action request detected, navigating to PrivacyAction');
+      navigation.navigate("PrivacyAction");
+    }
+  }, [pendingPrivacyAction, shouldShowConnectedUI, navigation]);
 
   const getSyncStatusText = () => {
     if (isDashboardDisconnected) {

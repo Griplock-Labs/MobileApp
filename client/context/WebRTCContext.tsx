@@ -7,6 +7,8 @@ import {
   sendWalletAddress as sendWalletAddressRaw,
   sendAttemptUpdate,
   sendSignResult as sendSignResultRaw,
+  sendSignResponse as sendSignResponseRaw,
+  sendPrivacyActionResponse as sendPrivacyActionResponseRaw,
   cleanupSession,
   sendDisconnect as sendDisconnectRaw,
   getDashboardBaseUrl,
@@ -30,15 +32,17 @@ export interface PeerDisconnectInfo {
 export interface SignRequest {
   type: 'sign_request';
   requestId: string;
-  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full';
+  action: 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full' | 'shield' | 'unshield';
   mint?: string;
   symbol?: string;
   amount?: number;
+  decimals?: number;
   timestamp: number;
   recipient?: string;
   unsignedTx?: string;
   message?: string;
   ownerPublicKey?: string;
+  description?: string;
   rpcUrl?: string;
 }
 
@@ -52,6 +56,17 @@ export interface CardActionRequest {
   timestamp?: number;
 }
 
+export interface PrivacyActionRequest {
+  type: 'privacy_action_request';
+  actionId: string;
+  actionType: 'shield' | 'unshield';
+  walletAddress: string;
+  symbol: string;
+  amount: number;
+  mint: string;
+  timestamp: number;
+}
+
 interface WebRTCContextValue {
   session: RelaySession;
   status: ConnectionStatus;
@@ -61,6 +76,7 @@ interface WebRTCContextValue {
   peerDisconnect: PeerDisconnectInfo;
   pendingSignRequest: SignRequest | null;
   pendingCardAction: CardActionRequest | null;
+  pendingPrivacyAction: PrivacyActionRequest | null;
   dashboardBaseUrl: string;
   solanaKeypair: Keypair | null;
   initializeFromQR: (qrData: string) => Promise<void>;
@@ -70,10 +86,13 @@ interface WebRTCContextValue {
   setWalletAddress: (address: string) => void;
   setSolanaKeypair: (keypair: Keypair) => void;
   notifyAttemptUpdate: (attempts: number, maxAttempts: number, isLockedOut: boolean, lockoutEndTime?: number) => boolean;
-  sendSignResult: (requestId: string, action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full', success: boolean, signature?: string, error?: string) => boolean;
+  sendSignResult: (requestId: string, action: 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full' | 'shield' | 'unshield', success: boolean, signature?: string, error?: string) => boolean;
+  sendSignResponse: (requestId: string, action: 'shield' | 'unshield', success: boolean, signedTx?: string, error?: string) => boolean;
+  sendPrivacyActionResponse: (actionId: string, actionType: 'shield' | 'unshield', approved: boolean, walletAddress: string, error?: string) => boolean;
   sendDisconnect: () => boolean;
   clearPendingSignRequest: () => void;
   clearPendingCardAction: () => void;
+  clearPendingPrivacyAction: () => void;
   cleanup: (sendDisconnectMsg?: boolean) => void;
   lastMessage: unknown;
 }
@@ -93,6 +112,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
   });
   const [pendingSignRequest, setPendingSignRequest] = useState<SignRequest | null>(null);
   const [pendingCardAction, setPendingCardAction] = useState<CardActionRequest | null>(null);
+  const [pendingPrivacyAction, setPendingPrivacyAction] = useState<PrivacyActionRequest | null>(null);
   const [solanaKeypair, setSolanaKeypairState] = useState<Keypair | null>(null);
   const solanaKeypairRef = useRef<Keypair | null>(null);
   const [peerDisconnect, setPeerDisconnect] = useState<PeerDisconnectInfo>({
@@ -115,6 +135,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
     setPeerDisconnect({ reason: null, timestamp: null });
     setPendingSignRequest(null);
     setPendingCardAction(null);
+    setPendingPrivacyAction(null);
     setSolanaKeypairState(null);
   }, []);
 
@@ -200,6 +221,12 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
               const cardAction = message as CardActionRequest;
               setPendingCardAction(cardAction);
             }
+            
+            if (msg.type === 'privacy_action_request') {
+              console.log('[Relay] Privacy action request received:', msg);
+              const privacyAction = message as PrivacyActionRequest;
+              setPendingPrivacyAction(privacyAction);
+            }
           }
         },
         (reason) => {
@@ -253,12 +280,22 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
 
   const sendSignResult = useCallback((
     requestId: string,
-    action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full',
+    action: 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full' | 'shield' | 'unshield',
     success: boolean,
     signature?: string,
     error?: string
   ): boolean => {
     return sendSignResultRaw(sessionRef.current, requestId, action, success, signature, error);
+  }, []);
+
+  const sendSignResponse = useCallback((
+    requestId: string,
+    action: 'shield' | 'unshield',
+    success: boolean,
+    signedTx?: string,
+    error?: string
+  ): boolean => {
+    return sendSignResponseRaw(sessionRef.current, requestId, action, success, signedTx, error);
   }, []);
 
   const clearPendingSignRequest = useCallback(() => {
@@ -267,6 +304,20 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
 
   const clearPendingCardAction = useCallback(() => {
     setPendingCardAction(null);
+  }, []);
+
+  const clearPendingPrivacyAction = useCallback(() => {
+    setPendingPrivacyAction(null);
+  }, []);
+
+  const sendPrivacyActionResponse = useCallback((
+    actionId: string,
+    actionType: 'shield' | 'unshield',
+    approved: boolean,
+    walletAddress: string,
+    error?: string
+  ): boolean => {
+    return sendPrivacyActionResponseRaw(sessionRef.current, actionId, actionType, approved, walletAddress, error);
   }, []);
 
   const sendDisconnect = useCallback((): boolean => {
@@ -286,6 +337,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
         peerDisconnect,
         pendingSignRequest,
         pendingCardAction,
+        pendingPrivacyAction,
         dashboardBaseUrl: getDashboardBaseUrl(sessionRef.current.relayUrl),
         solanaKeypair,
         initializeFromQR,
@@ -296,9 +348,12 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
         setSolanaKeypair,
         notifyAttemptUpdate,
         sendSignResult,
+        sendSignResponse,
+        sendPrivacyActionResponse,
         sendDisconnect,
         clearPendingSignRequest,
         clearPendingCardAction,
+        clearPendingPrivacyAction,
         cleanup,
         lastMessage,
       }}

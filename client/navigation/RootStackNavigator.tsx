@@ -8,12 +8,23 @@ import NFCReaderScreen from "@/screens/NFCReaderScreen";
 import PINInputScreen from "@/screens/PINInputScreen";
 import SignConfirmScreen from "@/screens/SignConfirmScreen";
 import CardActionScreen from "@/screens/CardActionScreen";
+import PrivacyActionScreen from "@/screens/PrivacyActionScreen";
 
 export type CardActionParams = {
   actionId: string;
   actionType: 'lock' | 'unlock';
   cardPan: string;
   cardholderName: string;
+  expiresAt: string;
+};
+
+export type PrivacyActionParams = {
+  actionId: string;
+  actionType: 'shield' | 'unshield';
+  walletAddress: string;
+  symbol: string;
+  amount: number;
+  mint: string;
   expiresAt: string;
 };
 
@@ -25,9 +36,11 @@ export type RootStackParamList = {
     sessionId: string; 
     nfcData: string;
     cardAction?: CardActionParams;
+    privacyAction?: PrivacyActionParams;
   };
   SignConfirm: undefined;
   CardAction: undefined;
+  PrivacyAction: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -80,6 +93,11 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="CardAction"
         component={CardActionScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PrivacyAction"
+        component={PrivacyActionScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

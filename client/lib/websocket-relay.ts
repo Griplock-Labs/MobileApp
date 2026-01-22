@@ -239,17 +239,26 @@ export function sendAttemptUpdate(
 export interface SignResult {
   type: 'sign_result';
   requestId: string;
-  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full';
+  action: 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full' | 'shield' | 'unshield';
   success: boolean;
   signature?: string;
   encryptionSignature?: string;
   error?: string;
 }
 
+export interface SignResponse {
+  type: 'sign_response';
+  requestId: string;
+  action: 'shield' | 'unshield';
+  success: boolean;
+  signedTx?: string;
+  error?: string;
+}
+
 export function sendSignResult(
   session: RelaySession,
   requestId: string,
-  action: 'compress' | 'decompress' | 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full',
+  action: 'private_send' | 'get_encryption_signature' | 'encryption_signature' | 'private_deposit' | 'private_withdraw' | 'privacy_deposit_full' | 'privacy_withdraw_full' | 'shield' | 'unshield',
   success: boolean,
   signature?: string,
   error?: string
@@ -269,6 +278,32 @@ export function sendSignResult(
   }
 
   console.log('[Relay] Sending sign_result:', payload);
+  return sendRelay(session, payload);
+}
+
+export function sendSignResponse(
+  session: RelaySession,
+  requestId: string,
+  action: 'shield' | 'unshield',
+  success: boolean,
+  signedTx?: string,
+  error?: string
+): boolean {
+  const payload: SignResponse = {
+    type: 'sign_response',
+    requestId,
+    action,
+    success,
+  };
+
+  if (success && signedTx) {
+    payload.signedTx = signedTx;
+  }
+  if (!success && error) {
+    payload.error = error;
+  }
+
+  console.log('[Relay] Sending sign_response:', payload);
   return sendRelay(session, payload);
 }
 
@@ -294,6 +329,39 @@ export function sendEncryptionSignatureResult(
   }
 
   console.log('[Relay] Sending encryption_signature result:', payload);
+  return sendRelay(session, payload);
+}
+
+export interface PrivacyActionResponse {
+  type: 'privacy_action_response';
+  actionId: string;
+  actionType: 'shield' | 'unshield';
+  approved: boolean;
+  walletAddress: string;
+  error?: string;
+}
+
+export function sendPrivacyActionResponse(
+  session: RelaySession,
+  actionId: string,
+  actionType: 'shield' | 'unshield',
+  approved: boolean,
+  walletAddress: string,
+  error?: string
+): boolean {
+  const payload: PrivacyActionResponse = {
+    type: 'privacy_action_response',
+    actionId,
+    actionType,
+    approved,
+    walletAddress,
+  };
+
+  if (!approved && error) {
+    payload.error = error;
+  }
+
+  console.log('[Relay] Sending privacy_action_response:', payload);
   return sendRelay(session, payload);
 }
 

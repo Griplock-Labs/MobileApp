@@ -137,7 +137,7 @@ export default function PINInputScreen() {
   const [isLockedOut, setIsLockedOut] = useState(false);
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
   const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const { sendWalletAddress, setWalletAddress, setSolanaKeypair, status: connectionStatus, cleanup, notifyAttemptUpdate, walletAddress: connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction } = useWebRTC();
+  const { sendWalletAddress, setWalletAddress, setSolanaKeypair, status: connectionStatus, cleanup, notifyAttemptUpdate, walletAddress: connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction, clearPendingPrivacyAction, sendPrivacyActionResponse } = useWebRTC();
   
   const shakeAnim = useSharedValue(0);
   const scaleAnim = useSharedValue(1);
@@ -289,6 +289,56 @@ export default function PINInputScreen() {
               return;
             }
 
+            // Privacy Action Flow
+            if (route.params?.privacyAction) {
+              console.log('[PIN] Privacy action flow detected');
+              const privacyAction = route.params.privacyAction;
+              
+              if (!connectedWalletAddress) {
+                throw new Error("Session not active");
+              }
+
+              console.log('[PIN] Deriving wallet address for privacy action...');
+              const derivedAddress = deriveSolanaAddress(route.params.nfcData, newPin);
+              console.log('[PIN] Derived address:', derivedAddress);
+              console.log('[PIN] Expected wallet:', privacyAction.walletAddress);
+
+              await new Promise(resolve => setTimeout(resolve, 1200));
+
+              if (derivedAddress !== privacyAction.walletAddress) {
+                console.log('[PIN] Wallet mismatch - sending rejection');
+                sendPrivacyActionResponse(
+                  privacyAction.actionId,
+                  privacyAction.actionType,
+                  false,
+                  derivedAddress,
+                  "Wallet address mismatch"
+                );
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                throw new Error("Invalid card or PIN");
+              }
+
+              console.log('[PIN] Wallet verified, sending approval...');
+              sendPrivacyActionResponse(
+                privacyAction.actionId,
+                privacyAction.actionType,
+                true,
+                derivedAddress
+              );
+
+              if (Platform.OS !== "web") {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+              clearPendingPrivacyAction();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Home' }],
+              });
+              return;
+            }
+
             // Normal wallet connection flow
             if (connectionStatus !== "connected") {
               console.log('[PIN] ERROR: Not connected, status:', connectionStatus);
@@ -352,7 +402,7 @@ export default function PINInputScreen() {
         }, 500);
       });
     }
-  }, [pin, isProcessing, isLockedOut, attempts, navigation, route.params, connectionStatus, sendWalletAddress, setWalletAddress, setSolanaKeypair, shakeAnim, scaleAnim, startLockout, notifyAttemptUpdate, connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction]);
+  }, [pin, isProcessing, isLockedOut, attempts, navigation, route.params, connectionStatus, sendWalletAddress, setWalletAddress, setSolanaKeypair, shakeAnim, scaleAnim, startLockout, notifyAttemptUpdate, connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction, clearPendingPrivacyAction, sendPrivacyActionResponse]);
 
   const renderPinBox = (index: number) => {
     const isFilled = index < pin.length;

@@ -2,12 +2,6 @@
 
 Mobile companion app for the GRIPLOCK ephemeral crypto wallet system.
 
-## Download
-
-### APK v1.0 Beta
-
-[Download APK](https://expo.dev/artifacts/eas/bV3TdeHmrS8yz6YYHAmWmt.apk)
-
 ## Overview
 
 GRIPLOCK is a fully decentralized ephemeral crypto wallet system. Users scan QR codes from the GRIPLOCK dashboard, tap their NFC card, and enter a PIN to derive a wallet address cryptographically. The wallet exists only in memory during the active session.
