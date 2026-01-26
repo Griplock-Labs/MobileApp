@@ -13,6 +13,7 @@ import {
   Inter_400Regular,
   Inter_500Medium,
 } from "@expo-google-fonts/inter";
+import { GeistMono_400Regular } from "@expo-google-fonts/geist-mono";
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
@@ -50,6 +51,7 @@ export default function App() {
     Orbitron_700Bold,
     Inter_400Regular,
     Inter_500Medium,
+    GeistMono_400Regular,
   });
 
   const fontsLoaded = customFontsLoaded && googleFontsLoaded;

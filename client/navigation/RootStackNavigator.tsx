@@ -9,6 +9,10 @@ import PINInputScreen from "@/screens/PINInputScreen";
 import SignConfirmScreen from "@/screens/SignConfirmScreen";
 import CardActionScreen from "@/screens/CardActionScreen";
 import PrivacyActionScreen from "@/screens/PrivacyActionScreen";
+import WalletScreen from "@/screens/WalletScreen";
+import ReceivePrivatelyScreen from "@/screens/ReceivePrivatelyScreen";
+import ReceiveScreen from "@/screens/ReceiveScreen";
+import WalletDetailScreen from "@/screens/WalletDetailScreen";
 
 export type CardActionParams = {
   actionId: string;
@@ -30,6 +34,7 @@ export type PrivacyActionParams = {
 
 export type RootStackParamList = {
   Home: undefined;
+  Wallet: undefined;
   QRScanner: { sessionId: string };
   NFCReader: { sessionId?: string };
   PINInput: { 
@@ -41,6 +46,9 @@ export type RootStackParamList = {
   SignConfirm: undefined;
   CardAction: undefined;
   PrivacyAction: undefined;
+  Receive: undefined;
+  ReceivePrivately: undefined;
+  WalletDetail: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -71,6 +79,11 @@ export default function RootStackNavigator() {
         options={{ headerShown: false }}
       />
       <Stack.Screen
+        name="Wallet"
+        component={WalletScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="QRScanner"
         component={QRScannerScreen}
         options={{ headerShown: false }}
@@ -98,6 +111,21 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="PrivacyAction"
         component={PrivacyActionScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Receive"
+        component={ReceiveScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ReceivePrivately"
+        component={ReceivePrivatelyScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WalletDetail"
+        component={WalletDetailScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

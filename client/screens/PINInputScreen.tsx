@@ -339,7 +339,32 @@ export default function PINInputScreen() {
               return;
             }
 
-            // Normal wallet connection flow
+            // Local wallet flow (NFC auto-detect without dashboard)
+            const isLocalSession = route.params.sessionId.startsWith("local_");
+            
+            if (isLocalSession) {
+              console.log('[PIN] Local session flow detected');
+              
+              console.log('[PIN] Deriving wallet keypair...');
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
+              const walletAddress = keypair.publicKey.toBase58();
+              console.log('[PIN] Wallet derived:', walletAddress);
+
+              console.log('[PIN] Storing keypair in context...');
+              setSolanaKeypair(keypair);
+              setWalletAddress(walletAddress);
+
+              await new Promise(resolve => setTimeout(resolve, 1200));
+
+              if (Platform.OS !== "web") {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+
+              navigation.replace("Wallet");
+              return;
+            }
+
+            // Normal wallet connection flow (with dashboard)
             if (connectionStatus !== "connected") {
               console.log('[PIN] ERROR: Not connected, status:', connectionStatus);
               throw new Error("Dashboard not connected");
@@ -369,7 +394,7 @@ export default function PINInputScreen() {
               await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
 
-            navigation.replace("Home");
+            navigation.replace("Wallet");
           } catch (error) {
             console.log('[PIN] CATCH ERROR:', error instanceof Error ? error.message : error);
             

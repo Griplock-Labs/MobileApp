@@ -50,6 +50,3 @@ app-example
 # Firebase config files (DO NOT COMMIT - contains sensitive data)
 google-services.json
 GoogleService-Info.plist
-
-# Environment files (DO NOT COMMIT - contains secrets)
-.env

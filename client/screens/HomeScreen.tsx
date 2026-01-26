@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import Svg, { Path, Circle } from "react-native-svg";
+import Svg, { Path, Defs, LinearGradient, Stop } from "react-native-svg";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -28,73 +28,22 @@ import Animated, {
 import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
+import WalletCard from "@/components/WalletCard";
+import BottomNavigation from "@/components/BottomNavigation";
+
+let NfcManager: any = null;
+let NfcTech: any = null;
+
+if (Platform.OS !== "web") {
+  try {
+    const nfcModule = require("react-native-nfc-manager");
+    NfcManager = nfcModule.default;
+    NfcTech = nfcModule.NfcTech;
+  } catch (e) {
+  }
+}
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "Home">;
-
-function GridIcon({
-  size = 23,
-  color = "white",
-}: {
-  size?: number;
-  color?: string;
-}) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 23 23" fill="none">
-      <Path
-        d="M9.19009 22.6741V5.81899C9.19009 5.52097 9.0717 5.23516 8.86097 5.02443C8.65024 4.8137 8.36443 4.69531 8.06641 4.69531H2.44803C1.852 4.69531 1.28038 4.93209 0.858917 5.35355C0.437457 5.77501 0.200684 6.34663 0.200684 6.94266V20.4268C0.200684 21.0228 0.437457 21.5944 0.858917 22.0159C1.28038 22.4373 1.852 22.6741 2.44803 22.6741H15.9321C16.5282 22.6741 17.0998 22.4373 17.5213 22.0159C17.9427 21.5944 18.1795 21.0228 18.1795 20.4268V14.8084C18.1795 14.5104 18.0611 14.2246 17.8504 14.0139C17.6397 13.8031 17.3538 13.6847 17.0558 13.6847H0.200684"
-        stroke={color}
-        strokeWidth={0.401313}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <Path
-        d="M21.5505 0.200195H14.8085C14.1879 0.200195 13.6848 0.703282 13.6848 1.32387V8.06592C13.6848 8.68651 14.1879 9.1896 14.8085 9.1896H21.5505C22.1711 9.1896 22.6742 8.68651 22.6742 8.06592V1.32387C22.6742 0.703282 22.1711 0.200195 21.5505 0.200195Z"
-        stroke={color}
-        strokeWidth={0.401313}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
-function QRIcon({ ...props }) {
-  return (
-    <Svg width={61} height={61} viewBox="0 0 61 61" fill="none" {...props}>
-      <Path
-        d="M15.0492 31.7054H30.0985V16.6562H15.0492V31.7054ZM18.3907 20.0741H26.757V28.3895H18.3907V20.0741ZM30.0985 0C13.4678 0 0 13.4678 0 30.0985C0 46.7291 13.4678 60.1969 30.0985 60.1969C46.7291 60.1969 60.1969 46.7291 60.1969 30.0985C60.1969 13.4678 46.7291 0 30.0985 0ZM11.7078 13.3658H33.4654V35.0468H11.7078V13.3658ZM50.1726 30.0474V33.3889H43.4897V36.7303H50.1726V43.4387H46.8312V40.0973H40.1483V45.1222H46.8312V48.4636H28.4405V45.1222H25.0991V41.7807H21.7321V48.4636H11.7078V38.4393H15.0492V41.7807H18.3907V38.4393H25.0991V35.0468H28.4405V41.7807H31.7819V38.4393H38.4903V33.3889H33.4654V30.0474H38.4903V26.7315H35.1233V23.3645H38.4903V20.0231H41.8317V23.3645H45.1731V16.6561H48.4891V23.3645H45.1731V26.7315H48.4891V30.0474H50.1726ZM48.4891 45.1222V48.4636H43.4897V45.1222H48.4891ZM41.8317 30.0474H45.1731V33.3889H41.8317V30.0474Z"
-        fill="white"
-      />
-    </Svg>
-  );
-}
-
-function UserIcon({
-  size = 21,
-  color = "white",
-}: {
-  size?: number;
-  color?: string;
-}) {
-  return (
-    <Svg width={size} height={size + 2} viewBox="0 0 21 23" fill="none">
-      <Path
-        d="M10.1963 12.6933C13.644 12.6933 16.4389 9.89837 16.4389 6.45065C16.4389 3.00293 13.644 0.208008 10.1963 0.208008C6.74854 0.208008 3.95361 3.00293 3.95361 6.45065C3.95361 9.89837 6.74854 12.6933 10.1963 12.6933Z"
-        stroke={color}
-        strokeWidth={0.416176}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <Path
-        d="M20.1845 22.6816C20.1845 20.0325 19.1321 17.492 17.259 15.6188C15.3858 13.7457 12.8453 12.6934 10.1962 12.6934C7.54719 12.6934 5.00665 13.7457 3.13349 15.6188C1.26034 17.492 0.208008 20.0325 0.208008 22.6816"
-        stroke={color}
-        strokeWidth={0.416176}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
 
 function CheckIcon({ size = 88 }: { size?: number }) {
   return (
@@ -107,12 +56,75 @@ function CheckIcon({ size = 88 }: { size?: number }) {
   );
 }
 
+function GriplockLogo() {
+  return (
+    <Svg width={50} height={50} viewBox="0 0 50 50" fill="none">
+      <Path
+        d="M16.585 8.07031C16.5834 8.07109 16.5816 8.07149 16.5801 8.07227L24.8525 16.3379L20.6055 20.5801L11.6445 11.6279C8.2177 15.0498 6.09668 19.7769 6.09668 25C6.09668 35.4429 14.5701 43.9082 25.0225 43.9082C32.2135 43.9082 38.4664 39.901 41.6689 34H22.7705V28H49.8652C48.3818 40.3926 37.8258 50 25.0225 50C11.2029 50 4.75598e-07 38.8071 0 25C0 15.9178 4.84766 7.96711 12.0986 3.58887L16.585 8.07031ZM47.3682 13.7402C48.8669 16.7035 49.794 20.005 50.001 23.5H37.8027L47.3682 13.7402ZM41.2178 5.94336C42.5805 7.10061 43.8183 8.40072 44.9062 9.82129L34.5459 20.3896L30.7627 16.6094L41.2178 5.94336ZM32.2197 1.04883C34.0754 1.60468 35.8403 2.37117 37.4873 3.31836L27.5771 13.4277L23.792 9.64648L32.2197 1.04883ZM25.0225 0C25.6463 9.07155e-06 26.2656 0.0215703 26.8779 0.0664062L20.6074 6.46387L15.8662 1.72656C18.7019 0.612097 21.7908 3.73014e-05 25.0225 0Z"
+        fill="url(#paint0_linear_logo)"
+      />
+      <Defs>
+        <LinearGradient
+          id="paint0_linear_logo"
+          x1="25.0005"
+          y1="0"
+          x2="25.0005"
+          y2="50"
+          gradientUnits="userSpaceOnUse"
+        >
+          <Stop stopColor="#DBE4ED" />
+          <Stop offset="1" stopColor="#A3BAD2" />
+        </LinearGradient>
+      </Defs>
+    </Svg>
+  );
+}
+
+function PhoneIllustration() {
+  return (
+    <Svg width={255} height={157} viewBox="0 0 255 157" fill="none">
+      <Path d="M164.688 15.5107L140.885 29.9485L194.344 63.8969L218.927 48.2884L164.688 15.5107Z" stroke="white" strokeWidth={0.390211} />
+      <Path d="M254.045 55.3115V64.6766L95.6199 156.144H81.5723L0.195312 109.161V100.576" stroke="white" strokeWidth={0.390211} />
+      <Path d="M158.053 0.195312L0.408203 91.2116V100.37L81.572 147.23H94.8392L254.045 55.3122V47.2806L172.491 0.195312H158.053Z" stroke="white" strokeWidth={0.390211} />
+      <Path d="M254.046 55.3117L172.492 6.92557V0.291992" stroke="white" strokeWidth={0.390211} />
+      <Path d="M172.492 6.92557H158.054V0.291992" stroke="white" strokeWidth={0.390211} />
+      <Path d="M158.053 6.92578L0.408203 100.186" stroke="white" strokeWidth={0.390211} />
+      <Path d="M234.925 72.0908L223.999 78.399" stroke="white" strokeWidth={0.390211} />
+      <Path d="M34.3564 125.159L46.5223 132.183" stroke="white" strokeWidth={0.390211} />
+      <Path d="M164.297 26.891L161.566 25.314C160.525 24.7133 160.525 23.2113 161.566 22.6106L164.297 21.0336C164.78 20.7548 165.375 20.7548 165.858 21.0336L168.59 22.6106C169.63 23.2113 169.63 24.7133 168.59 25.314L165.858 26.891C165.375 27.1699 164.78 27.1699 164.297 26.891Z" stroke="white" strokeWidth={0.390211} />
+      <Path d="M172.881 32.3539L170.15 30.7769C169.109 30.1762 169.109 28.6742 170.15 28.0735L172.881 26.4965C173.364 26.2177 173.959 26.2177 174.442 26.4965L177.174 28.0735C178.214 28.6742 178.214 30.1762 177.174 30.7769L174.442 32.3539C173.959 32.6327 173.364 32.6327 172.881 32.3539Z" stroke="white" strokeWidth={0.390211} />
+      <Path d="M155.712 32.3539L152.981 30.7769C151.94 30.1762 151.94 28.6742 152.981 28.0735L155.712 26.4965C156.195 26.2177 156.79 26.2177 157.273 26.4965L160.005 28.0735C161.045 28.6742 161.045 30.1762 160.005 30.7769L157.273 32.3539C156.79 32.6327 156.195 32.6327 155.712 32.3539Z" stroke="white" strokeWidth={0.390211} />
+    </Svg>
+  );
+}
+
+function NFCCardIllustration() {
+  return (
+    <Svg width={181} height={105} viewBox="0 0 181 105" fill="none">
+      <Path d="M180.871 68.1064L118.017 104.396" stroke="white" strokeWidth={0.390211} />
+      <Path d="M63.0986 0.209961L180.841 68.0217" stroke="white" strokeWidth={0.390211} />
+      <Path d="M0.0986328 36.21L117.626 104.701" stroke="white" strokeWidth={0.390211} />
+      <Path d="M63.0986 0.168945L0.172852 36.4996" stroke="white" strokeWidth={0.390211} />
+      <Path d="M62.9967 4.89258L8.36719 37.2801L117.236 100.494L173.036 67.7165L62.9967 4.89258Z" fill="white" fillOpacity={0.2} />
+      <Path d="M22.8053 32.9873C22.8053 34.7114 21.4077 36.109 19.6836 36.109" stroke="white" strokeWidth={0.780421} />
+      <Path d="M25.1465 32.9873C25.1465 36.0044 22.7007 38.4503 19.6836 38.4503" stroke="white" strokeWidth={0.780421} />
+      <Path d="M27.878 32.9873C27.878 37.2975 24.384 40.7915 20.0738 40.7915H19.6836" stroke="white" strokeWidth={0.780421} />
+      <Path d="M60.2656 8.58161L63.3401 6.45312V10.0006L65.9416 8.10862" stroke="white" strokeWidth={0.472997} />
+      <Path d="M64.2861 11.4197L67.5971 9.05469L69.2526 10.2372" stroke="white" strokeWidth={0.472997} />
+      <Path d="M66.4141 9.76465L68.3061 11.1836" stroke="white" strokeWidth={0.472997} />
+      <Path d="M73.0358 12.6016L70.9073 11.1826L68.0693 13.0746L69.7248 14.2571" stroke="white" strokeWidth={0.472997} />
+    </Svg>
+  );
+}
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
   const pulseAnim = useSharedValue(0);
+  const phoneFloat = useSharedValue(0);
+  const cardFloat = useSharedValue(0);
 
   const webrtc = useWebRTC();
   const walletAddress = webrtc?.walletAddress;
@@ -126,9 +138,15 @@ export default function HomeScreen() {
   const sendSignResult = webrtc?.sendSignResult;
   const clearPendingSignRequest = webrtc?.clearPendingSignRequest;
   const cleanup = webrtc?.cleanup;
+  const setNfcData = webrtc?.setNfcData;
+  const nfcData = webrtc?.nfcData;
 
   const [copied, setCopied] = useState(false);
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
+  const [nfcDetected, setNfcDetected] = useState(false);
+  const [nfcCardId, setNfcCardId] = useState<string | null>(null);
+  const nfcScanningRef = useRef(false);
+  const nfcRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const cleanupRef = useRef(cleanup);
   const cleanupCalledRef = useRef(false);
   cleanupRef.current = cleanup;
@@ -139,6 +157,97 @@ export default function HomeScreen() {
   const isDashboardDisconnected = dashboardDisconnect?.reason !== null;
   const isPeerDisconnected = peerDisconnect?.reason !== null;
   const shouldShowConnectedUI = isConnected && !isDashboardDisconnected && !isPeerDisconnected;
+
+  const cleanupNfc = useCallback(async () => {
+    if (nfcRetryTimeoutRef.current) {
+      clearTimeout(nfcRetryTimeoutRef.current);
+      nfcRetryTimeoutRef.current = null;
+    }
+    if (NfcManager) {
+      try {
+        await NfcManager.cancelTechnologyRequest();
+      } catch (e) {
+      }
+    }
+  }, []);
+
+  const startNfcScan = useCallback(async () => {
+    if (!NfcManager || Platform.OS === "web") return;
+    
+    if (nfcScanningRef.current) {
+      return;
+    }
+    
+    nfcScanningRef.current = true;
+
+    try {
+      await cleanupNfc();
+      
+      const supported = await NfcManager.isSupported();
+      if (!supported) {
+        nfcScanningRef.current = false;
+        return;
+      }
+      
+      await NfcManager.start();
+      const enabled = await NfcManager.isEnabled();
+      if (!enabled) {
+        nfcScanningRef.current = false;
+        return;
+      }
+      
+      await NfcManager.requestTechnology(NfcTech.Ndef);
+      const tag = await NfcManager.getTag();
+      
+      if (tag) {
+        console.log('[HomeScreen NFC] Tag detected:', JSON.stringify(tag));
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        const rawTagId = tag.id || "";
+        const tagId = rawTagId.replace(/[^0-9a-f]/gi, "").toLowerCase();
+        const nfcDataString = `griplock_${tagId}`;
+        
+        console.log('[HomeScreen NFC] Processed NFC data:', nfcDataString);
+        
+        setNfcDetected(true);
+        setNfcCardId(nfcDataString);
+        setNfcData?.(nfcDataString);
+        
+        await NfcManager.cancelTechnologyRequest();
+        nfcScanningRef.current = false;
+        
+        const localSessionId = `local_${Date.now()}`;
+        console.log('[HomeScreen NFC] Navigating to PIN screen with session:', localSessionId);
+        navigation.navigate("PINInput", {
+          sessionId: localSessionId,
+          nfcData: nfcDataString,
+        });
+      }
+    } catch (e: any) {
+      nfcScanningRef.current = false;
+      
+      try {
+        await NfcManager.cancelTechnologyRequest();
+      } catch (cancelError) {}
+      
+      nfcRetryTimeoutRef.current = setTimeout(() => {
+        if (!shouldShowConnectedUI) {
+          startNfcScan();
+        }
+      }, 1000);
+    }
+  }, [cleanupNfc, setNfcData, shouldShowConnectedUI]);
+
+  useEffect(() => {
+    if (!shouldShowConnectedUI && Platform.OS !== "web") {
+      startNfcScan();
+    }
+    
+    return () => {
+      cleanupNfc();
+      nfcScanningRef.current = false;
+    };
+  }, [shouldShowConnectedUI, startNfcScan, cleanupNfc]);
 
   useEffect(() => {
     if (isPeerDisconnected && walletAddress && !cleanupCalledRef.current) {
@@ -164,10 +273,36 @@ export default function HomeScreen() {
       -1,
       false
     );
+
+    phoneFloat.value = withRepeat(
+      withSequence(
+        withTiming(-5, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(5, { duration: 2000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+
+    cardFloat.value = withRepeat(
+      withSequence(
+        withTiming(8, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(-8, { duration: 1500, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
   }, []);
 
   const buttonGlowStyle = useAnimatedStyle(() => ({
     opacity: interpolate(pulseAnim.value, [0, 1], [0.8, 1]),
+  }));
+
+  const phoneFloatStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: phoneFloat.value }],
+  }));
+
+  const cardFloatStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: cardFloat.value }],
   }));
 
   const generateSessionId = (): string => {
@@ -270,140 +405,27 @@ export default function HomeScreen() {
             styles.container,
             {
               paddingTop: insets.top + Spacing["3xl"],
-              paddingBottom: insets.bottom,
             },
           ]}
         >
-          <View style={styles.header}>
-            <Text style={styles.title}>GRIPLOCK.</Text>
-            <Text style={[styles.subtitle, { color: "#06B040" }]}>Connected</Text>
+          <View style={styles.walletContentContainer}>
+            <WalletCard
+              walletName="Main wallet"
+              publicBalance={340}
+              privateBalance={5999}
+              onReceive={() => {}}
+              onSendPrivately={() => {}}
+              onSwipeNext={() => {}}
+            />
           </View>
 
-          <View style={styles.centerContent}>
-            <View style={styles.textContainer}>
-              <Text style={styles.tagline}>Ephemeral Wallet System</Text>
-            </View>
-          </View>
-
-          <View style={styles.addressSection}>
-            <Text style={styles.addressLabel}>SOL Wallet Address</Text>
-
-            <View style={styles.addressBoxWrapper}>
-              <View style={styles.addressBoxFrame}>
-                <View style={styles.addressBoxContent}>
-                  <Text style={styles.addressText}>{truncatedAddress}</Text>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.copyButton,
-                      pressed && styles.copyButtonPressed,
-                      copied && styles.copyButtonCopied,
-                    ]}
-                    onPress={handleCopyAddress}
-                    testID="button-copy-address"
-                  >
-                    <Text
-                      style={[
-                        styles.copyButtonText,
-                        copied && styles.copyButtonTextCopied,
-                      ]}
-                    >
-                      {copied ? "Copied!" : "Copy"}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={styles.cornerTopLeft}>
-                <Svg
-                  width={10}
-                  height={10}
-                  viewBox="0 0 10 10"
-                  fill="none"
-                  style={{ transform: [{ scaleX: -1 }] }}
-                >
-                  <Path d="M0 0.5H9V9.5" stroke="white" />
-                </Svg>
-              </View>
-              <View style={styles.cornerTopRight}>
-                <Svg width={10} height={10} viewBox="0 0 10 10" fill="none">
-                  <Path d="M0 0.5H9V9.5" stroke="white" />
-                </Svg>
-              </View>
-              <View style={styles.cornerBottomLeft}>
-                <Svg
-                  width={10}
-                  height={10}
-                  viewBox="0 0 10 10"
-                  fill="none"
-                  style={{ transform: [{ scaleX: -1 }, { scaleY: -1 }] }}
-                >
-                  <Path d="M0 0.5H9V9.5" stroke="white" />
-                </Svg>
-              </View>
-              <View style={styles.cornerBottomRight}>
-                <Svg
-                  width={10}
-                  height={10}
-                  viewBox="0 0 10 10"
-                  fill="none"
-                  style={{ transform: [{ scaleY: -1 }] }}
-                >
-                  <Path d="M0 0.5H9V9.5" stroke="white" />
-                </Svg>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.bottomNavContainer}>
-            <View style={styles.bottomNavWrapper}>
-              <Svg
-                width="100%"
-                height={100}
-                viewBox="0 0 428 100"
-                preserveAspectRatio="xMidYMid meet"
-                fill="none"
-              >
-                <Path
-                  d="M249.215 30.7012H405.727L428 50.3655"
-                  stroke="#747474"
-                  strokeWidth={0.5}
-                />
-                <Path
-                  d="M178.785 30.9014H22.273L0.000100315 50.5657"
-                  stroke="#747474"
-                  strokeWidth={0.5}
-                />
-                <Circle
-                  cx={213.9}
-                  cy={34.9142}
-                  r={34.7135}
-                  stroke="#06B040"
-                  strokeWidth={0.5}
-                  fill="transparent"
-                />
-              </Svg>
-
-              <View style={styles.navIconsOverlayWrapper}>
-                <View style={styles.navIconsOverlay}>
-                  <Pressable style={styles.leftNavButton}>
-                    <GridIcon size={22} color={Colors.dark.text} />
-                  </Pressable>
-
-                  <Pressable style={styles.rightNavButton}>
-                    <UserIcon size={22} color={Colors.dark.text} />
-                  </Pressable>
-                </View>
-
-                <Pressable 
-                  style={styles.connectedIndicatorContainer}
-                  onPress={handleConnectedIconPress}
-                  testID="button-connected-icon"
-                >
-                  <CheckIcon size={40} />
-                </Pressable>
-              </View>
-            </View>
-          </View>
+          <BottomNavigation
+            activeTab="grid"
+            onCenterPress={handleConnectedIconPress}
+            centerIcon={<CheckIcon size={40} />}
+            circleColor="#06B040"
+            centerButtonTestID="button-connected-icon"
+          />
         </View>
 
         <Modal
@@ -445,9 +467,9 @@ export default function HomeScreen() {
     <View style={styles.root}>
       <View style={styles.backgroundWrapper}>
         <Image
-          source={require("../../assets/images/home-background.png")}
+          source={require("../../assets/images/nfc-background.png")}
           style={styles.backgroundImage}
-          contentFit="contain"
+          contentFit="cover"
         />
       </View>
 
@@ -456,81 +478,38 @@ export default function HomeScreen() {
           styles.container,
           {
             paddingTop: insets.top + Spacing["3xl"],
-            paddingBottom: insets.bottom,
           },
         ]}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>GRIPLOCK.</Text>
-          <Text style={styles.subtitle}>Ready to connect</Text>
+          <GriplockLogo />
         </View>
 
         <View style={styles.centerContent}>
+          <View style={styles.nfcIllustrationContainer}>
+            <View style={styles.illustrationStack}>
+              <Animated.View style={[styles.phoneIllustrationWrapper, phoneFloatStyle]}>
+                <PhoneIllustration />
+              </Animated.View>
+              <Animated.View style={[styles.nfcCardIllustrationWrapper, cardFloatStyle]}>
+                <NFCCardIllustration />
+              </Animated.View>
+            </View>
+          </View>
           <View style={styles.textContainer}>
-            <Text style={styles.tagline}>Ephemeral Wallet System</Text>
-            <Text style={styles.instruction}>
-              Scan QR Code to Connect{"\n"}Web Dashboard
+            <Text style={styles.tapCardTitle}>TAP YOUR CARD</Text>
+            <Text style={styles.tapCardSubtitle}>
+              Place your any NFC card near the device
             </Text>
           </View>
         </View>
 
-        <View style={styles.bottomNavContainer}>
-          <View style={styles.bottomNavWrapper}>
-            <Svg
-              width="100%"
-              height={100}
-              viewBox="0 0 428 100"
-              preserveAspectRatio="xMidYMid meet"
-              fill="none"
-            >
-              <Path
-                d="M249.215 30.7012H405.727L428 50.3655"
-                stroke="#747474"
-                strokeWidth={0.5}
-              />
-              <Path
-                d="M178.785 30.9014H22.273L0.000100315 50.5657"
-                stroke="#747474"
-                strokeWidth={0.5}
-              />
-              <Circle
-                cx={213.9}
-                cy={34.9142}
-                r={34.7135}
-                stroke="#747474"
-                strokeWidth={0.5}
-                fill="transparent"
-              />
-            </Svg>
-
-            <View style={styles.navIconsOverlayWrapper}>
-              <View style={styles.navIconsOverlay}>
-                <Pressable style={styles.leftNavButton}>
-                  <GridIcon size={22} color={Colors.dark.text} />
-                </Pressable>
-
-                <Pressable style={styles.rightNavButton}>
-                  <UserIcon size={22} color={Colors.dark.text} />
-                </Pressable>
-              </View>
-
-              <Animated.View
-                style={[styles.scanButtonContainer, buttonGlowStyle]}
-              >
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.scanButton,
-                    pressed && styles.scanButtonPressed,
-                  ]}
-                  onPress={handleScanPress}
-                  testID="button-scan-qr"
-                >
-                  <QRIcon />
-                </Pressable>
-              </Animated.View>
-            </View>
-          </View>
-        </View>
+        <BottomNavigation
+          activeTab="grid"
+          onCenterPress={handleScanPress}
+          centerButtonStyle={buttonGlowStyle}
+          centerButtonTestID="button-scan-qr"
+        />
       </View>
     </View>
   );
@@ -571,9 +550,8 @@ const styles = StyleSheet.create({
   },
   centerContent: {
     flex: 1,
-    justifyContent: "flex-end",
+    justifyContent: "center",
     alignItems: "center",
-    paddingBottom: SCREEN_HEIGHT * 0.08,
   },
   textContainer: {
     alignItems: "center",
@@ -591,67 +569,47 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 24,
   },
-  bottomNavContainer: {
+  nfcIllustrationContainer: {
+    justifyContent: "center",
     alignItems: "center",
-    marginHorizontal: -Spacing["2xl"],
+    marginBottom: Spacing.xl,
   },
-  bottomNavWrapper: {
+  illustrationStack: {
     position: "relative",
+    width: 280,
+    height: 200,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  nfcIllustration: {
     width: "100%",
-    height: 100,
-    alignItems: "center",
-    justifyContent: "center",
+    height: "100%",
   },
-  navIconsOverlayWrapper: {
+  phoneIllustrationWrapper: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
     bottom: 0,
-    justifyContent: "center",
-    alignItems: "center",
   },
-  navIconsOverlay: {
+  nfcCardIllustrationWrapper: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
+    top: 5,
   },
-  leftNavButton: {
-    width: "50%",
-    height: 44,
-    display: "flex",
-    flexDirection: "row",
+  tapCardTitle: {
+    fontFamily: Fonts.circular.black,
+    fontSize: 22,
+    color: Colors.dark.text,
+    letterSpacing: 1,
+    marginBottom: Spacing.sm,
+  },
+  tapCardSubtitle: {
+    fontFamily: Fonts.circular.book,
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    textAlign: "center",
+  },
+  walletContentContainer: {
+    flex: 1,
     justifyContent: "center",
-    alignItems: "center",
-    marginTop: 20,
-  },
-  rightNavButton: {
-    width: "50%",
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 20,
-  },
-  scanButtonContainer: {
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: -28,
-  },
-  scanButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 35,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  scanButtonPressed: {
-    opacity: 0.7,
+    paddingHorizontal: Spacing.md,
   },
   connectedContent: {
     flex: 1,

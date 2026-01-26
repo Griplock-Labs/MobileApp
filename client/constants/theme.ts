@@ -111,6 +111,7 @@ export const Fonts = {
     book: "CircularStd-Book",
   },
   astroSpace: "AstroSpace",
+  geistMono: "GeistMono_400Regular",
   mono: Platform.select({
     ios: "Menlo",
     android: "monospace",
