@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, StyleSheet, Text, ImageBackground, Image } from "react-native";
+import { View, StyleSheet, Text, ImageBackground } from "react-native";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,12 +9,37 @@ import Animated, {
   withSpring,
   withDelay,
 } from "react-native-reanimated";
+import Svg, { Path, Defs, LinearGradient, Stop } from "react-native-svg";
 
 import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import ScreenHeader from "@/components/ScreenHeader";
 import CyberpunkInput from "@/components/CyberpunkInput";
 import CyberpunkButton from "@/components/CyberpunkButton";
+
+function GriplockLogoGreen() {
+  return (
+    <Svg width={120} height={120} viewBox="0 0 50 50" fill="none">
+      <Path
+        d="M16.585 8.07031C16.5834 8.07109 16.5816 8.07149 16.5801 8.07227L24.8525 16.3379L20.6055 20.5801L11.6445 11.6279C8.2177 15.0498 6.09668 19.7769 6.09668 25C6.09668 35.4429 14.5701 43.9082 25.0225 43.9082C32.2135 43.9082 38.4664 39.901 41.6689 34H22.7705V28H49.8652C48.3818 40.3926 37.8258 50 25.0225 50C11.2029 50 4.75598e-07 38.8071 0 25C0 15.9178 4.84766 7.96711 12.0986 3.58887L16.585 8.07031ZM47.3682 13.7402C48.8669 16.7035 49.794 20.005 50.001 23.5H37.8027L47.3682 13.7402ZM41.2178 5.94336C42.5805 7.10061 43.8183 8.40072 44.9062 9.82129L34.5459 20.3896L30.7627 16.6094L41.2178 5.94336ZM32.2197 1.04883C34.0754 1.60468 35.8403 2.37117 37.4873 3.31836L27.5771 13.4277L23.792 9.64648L32.2197 1.04883ZM25.0225 0C25.6463 9.07155e-06 26.2656 0.0215703 26.8779 0.0664062L20.6074 6.46387L15.8662 1.72656C18.7019 0.612097 21.7908 3.73014e-05 25.0225 0Z"
+        fill="url(#paint0_linear_success)"
+      />
+      <Defs>
+        <LinearGradient
+          id="paint0_linear_success"
+          x1="25.0005"
+          y1="0"
+          x2="25.0005"
+          y2="50"
+          gradientUnits="userSpaceOnUse"
+        >
+          <Stop stopColor="#4ADE80" />
+          <Stop offset="1" stopColor="#22C55E" />
+        </LinearGradient>
+      </Defs>
+    </Svg>
+  );
+}
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "Success">;
 type RouteProps = RouteProp<RootStackParamList, "Success">;
@@ -71,11 +96,7 @@ export default function SuccessScreen() {
         </Animated.View>
         
         <Animated.View style={[styles.logoContainer, iconStyle]}>
-          <Image
-            source={require("../../assets/images/griplock-logo-green.png")}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
+          <GriplockLogoGreen />
         </Animated.View>
         
         <Animated.View style={[styles.bottomSection, { paddingBottom: insets.bottom + Spacing["2xl"] }, textStyle]}>
@@ -138,10 +159,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-  },
-  logoImage: {
-    width: 120,
-    height: 120,
   },
   bottomSection: {
     alignItems: "center",
