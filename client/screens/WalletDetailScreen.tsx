@@ -6,9 +6,12 @@ import {
   ScrollView,
   Pressable,
   useWindowDimensions,
+  Alert,
 } from "react-native";
 import Svg, { Path, Rect, Line } from "react-native-svg";
 import * as Haptics from "expo-haptics";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import ScreenHeader from "@/components/ScreenHeader";
 import { Spacing, Fonts } from "@/constants/theme";
@@ -16,6 +19,9 @@ import { useWebRTC } from "@/context/WebRTCContext";
 import { getBalance } from "@/lib/solana-rpc";
 import { getCompressedBalance } from "@/lib/private-shield";
 import { PublicKey } from "@solana/web3.js";
+import { RootStackParamList } from "@/navigation/RootStackNavigator";
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, "WalletDetail">;
 
 function ShieldButton({ onPress }: { onPress?: () => void }) {
   return (
@@ -119,6 +125,7 @@ function formatSOL(sol: number): string {
 }
 
 export default function WalletDetailScreen() {
+  const navigation = useNavigation<NavigationProp>();
   const { walletAddress } = useWebRTC();
   const [publicBalance, setPublicBalance] = useState(0);
   const [privateBalance, setPrivateBalance] = useState(0);
@@ -149,10 +156,28 @@ export default function WalletDetailScreen() {
 
   const handleShield = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!walletAddress) {
+      Alert.alert("Error", "Wallet not connected");
+      return;
+    }
+    if (publicBalance <= 0) {
+      Alert.alert("No Balance", "You need public SOL to shield");
+      return;
+    }
+    navigation.navigate("ShieldAmount", { walletAddress });
   };
 
   const handleUnshield = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!walletAddress) {
+      Alert.alert("Error", "Wallet not connected");
+      return;
+    }
+    if (privateBalance <= 0) {
+      Alert.alert("No Balance", "You need private balance to unshield");
+      return;
+    }
+    navigation.navigate("UnshieldAmount", { walletAddress });
   };
 
   const handleReceive = async () => {

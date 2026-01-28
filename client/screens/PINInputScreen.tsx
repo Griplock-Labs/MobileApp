@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { View, StyleSheet, Platform, Pressable, Text, InteractionManager } from "react-native";
+import { View, StyleSheet, Platform, Pressable, Text, InteractionManager, Modal } from "react-native";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
@@ -19,6 +19,7 @@ import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
 import { deriveSolanaAddress, deriveSolanaKeypair } from "@/lib/crypto";
+import { signAndBroadcastTransaction } from "@/lib/shield-transaction";
 import ScreenHeader from "@/components/ScreenHeader";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "PINInput">;
@@ -67,7 +68,8 @@ const logoStyles = StyleSheet.create({
   container: {
     width: 110,
     height: 110,
-    marginBottom: Spacing["2xl"],
+    marginBottom: Spacing["3xl"],
+    marginTop: -Spacing["4xl"],
   },
 });
 
@@ -136,6 +138,8 @@ export default function PINInputScreen() {
   const [attempts, setAttempts] = useState(0);
   const [isLockedOut, setIsLockedOut] = useState(false);
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
+  const [txErrorModalVisible, setTxErrorModalVisible] = useState(false);
+  const [txErrorMessage, setTxErrorMessage] = useState("");
   const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { sendWalletAddress, setWalletAddress, setSolanaKeypair, status: connectionStatus, cleanup, notifyAttemptUpdate, walletAddress: connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction, clearPendingPrivacyAction, sendPrivacyActionResponse } = useWebRTC();
   
@@ -339,6 +343,65 @@ export default function PINInputScreen() {
               return;
             }
 
+            // Mobile-initiated Shield/Unshield Flow
+            if (route.params?.shieldAction) {
+              console.log('[PIN] Shield action flow detected');
+              const shieldAction = route.params.shieldAction;
+
+              console.log('[PIN] Deriving wallet keypair for shield action...');
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
+              const derivedAddress = keypair.publicKey.toBase58();
+              console.log('[PIN] Derived address:', derivedAddress);
+              console.log('[PIN] Expected wallet:', shieldAction.walletAddress);
+
+              await new Promise(resolve => setTimeout(resolve, 800));
+
+              if (derivedAddress !== shieldAction.walletAddress) {
+                console.log('[PIN] Wallet mismatch - invalid card or PIN');
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                throw new Error("Invalid card or PIN");
+              }
+
+              console.log('[PIN] Wallet verified, signing and broadcasting transaction...');
+              
+              const result = await signAndBroadcastTransaction(keypair, shieldAction.unsignedTx);
+              
+              if (!result.success) {
+                console.log('[PIN] Transaction failed:', result.error);
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                setPin("");
+                setIsProcessing(false);
+                setTxErrorMessage(result.error || "Transaction failed");
+                setTxErrorModalVisible(true);
+                return;
+              }
+
+              console.log('[PIN] Transaction successful, signature:', result.signature);
+              if (Platform.OS !== "web") {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+
+              setSolanaKeypair(keypair);
+              setWalletAddress(derivedAddress);
+
+              navigation.reset({
+                index: 0,
+                routes: [{ 
+                  name: 'Success',
+                  params: {
+                    actionType: shieldAction.type,
+                    amount: shieldAction.amount,
+                    signature: result.signature,
+                  }
+                }],
+              });
+              return;
+            }
+
             // Local wallet flow (NFC auto-detect without dashboard)
             const isLocalSession = route.params.sessionId.startsWith("local_");
             
@@ -365,7 +428,9 @@ export default function PINInputScreen() {
             }
 
             // Normal wallet connection flow (with dashboard)
-            if (connectionStatus !== "connected") {
+            // Skip connection check for mobile-initiated shield/unshield flows (shieldAction)
+            const shieldAction = route.params?.shieldAction;
+            if (connectionStatus !== "connected" && !shieldAction) {
               console.log('[PIN] ERROR: Not connected, status:', connectionStatus);
               throw new Error("Dashboard not connected");
             }
@@ -459,22 +524,22 @@ export default function PINInputScreen() {
       >
         {({ pressed }) => (
           <View style={styles.keyContainer}>
-            <Svg width={70} height={70} viewBox="0 0 70 70" style={styles.keySvg}>
+            <Svg width={62} height={62} viewBox="0 0 62 62" style={styles.keySvg}>
               <Rect
-                x={4.2}
-                y={4.2}
-                width={61.6}
-                height={61.6}
+                x={3.72}
+                y={3.72}
+                width={54.56}
+                height={54.56}
                 fill="white"
                 fillOpacity={pressed ? 0.2 : 0.1}
               />
               <Rect
-                x={0.35}
-                y={0.35}
-                width={69.3}
-                height={69.3}
+                x={0.31}
+                y={0.31}
+                width={61.38}
+                height={61.38}
                 stroke="#484848"
-                strokeWidth={0.7}
+                strokeWidth={0.62}
                 fill="transparent"
               />
             </Svg>
@@ -525,6 +590,13 @@ export default function PINInputScreen() {
         <View style={styles.titleSection}>
           <Text style={styles.title}>ENTER YOUR PIN</Text>
           <Text style={styles.subtitle}>Enter your 6 Digit Secure PIN</Text>
+          {route.params?.shieldAction ? (
+            <View style={styles.actionBadge}>
+              <Text style={styles.actionBadgeText}>
+                {route.params.shieldAction.type === 'shield' ? 'SHIELD' : 'UNSHIELD'} {route.params.shieldAction.amount} SOL
+              </Text>
+            </View>
+          ) : null}
           
           {attempts > 0 ? (
             <Text style={styles.attemptsText}>
@@ -543,6 +615,55 @@ export default function PINInputScreen() {
           {KEYPAD_NUMBERS.map((key, index) => renderKey(key, index))}
         </View>
       </View>
+
+      <Modal
+        visible={txErrorModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTxErrorModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Transaction Failed</Text>
+            <Text style={styles.modalMessage}>
+              {txErrorMessage.length > 100 
+                ? txErrorMessage.substring(0, 100) + "..." 
+                : txErrorMessage}
+            </Text>
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={styles.modalButtonCancel}
+                onPress={() => {
+                  setTxErrorModalVisible(false);
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Wallet' }],
+                  });
+                }}
+                testID="button-tx-error-cancel"
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalButtonRetry}
+                onPress={() => {
+                  setTxErrorModalVisible(false);
+                  const shieldAction = route.params?.shieldAction;
+                  if (shieldAction) {
+                    navigation.replace("NFCReader", {
+                      sessionId: route.params.sessionId,
+                      shieldAction: shieldAction,
+                    });
+                  }
+                }}
+                testID="button-tx-error-retry"
+              >
+                <Text style={styles.modalButtonRetryText}>Retry</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -574,6 +695,20 @@ const styles = StyleSheet.create({
     fontSize: Typography.caption.fontSize,
     color: "rgba(255, 255, 255, 0.5)",
   },
+  actionBadge: {
+    backgroundColor: "rgba(164, 186, 210, 0.15)",
+    borderWidth: 1,
+    borderColor: "#A4BAD2",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    marginTop: Spacing.md,
+  },
+  actionBadgeText: {
+    fontFamily: Fonts.astroSpace,
+    fontSize: 11,
+    color: "#A4BAD2",
+    letterSpacing: 1,
+  },
   pinContainer: {
     flexDirection: "row",
     gap: Spacing.md,
@@ -593,16 +728,17 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "center",
     width: "100%",
-    maxWidth: 310,
-    gap: 32,
+    maxWidth: 270,
+    gap: 16,
+    marginBottom: Spacing["4xl"],
   },
   keyWrapper: {
-    width: 70,
-    height: 70,
+    width: 62,
+    height: 62,
   },
   keyContainer: {
-    width: 70,
-    height: 70,
+    width: 62,
+    height: 62,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -610,8 +746,8 @@ const styles = StyleSheet.create({
     position: "absolute",
   },
   keyEmpty: {
-    width: 70,
-    height: 70,
+    width: 62,
+    height: 62,
   },
   keyText: {
     fontFamily: Fonts.body,
@@ -644,6 +780,68 @@ const styles = StyleSheet.create({
   resetButtonText: {
     fontFamily: Fonts.body,
     fontSize: 16,
+    color: "#0A0A0A",
+    fontWeight: "600",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: Spacing.xl,
+  },
+  modalContainer: {
+    backgroundColor: "#1A1A1A",
+    borderRadius: 16,
+    padding: Spacing["2xl"],
+    width: "100%",
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  modalTitle: {
+    fontFamily: Fonts.astroSpace,
+    fontSize: 18,
+    color: "#FF6B6B",
+    textAlign: "center",
+    marginBottom: Spacing.md,
+  },
+  modalMessage: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.7)",
+    textAlign: "center",
+    marginBottom: Spacing["2xl"],
+    lineHeight: 20,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    gap: Spacing.md,
+  },
+  modalButtonCancel: {
+    flex: 1,
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "#555",
+    paddingVertical: Spacing.md,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  modalButtonCancelText: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.7)",
+  },
+  modalButtonRetry: {
+    flex: 1,
+    backgroundColor: Colors.dark.text,
+    paddingVertical: Spacing.md,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  modalButtonRetryText: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
     color: "#0A0A0A",
     fontWeight: "600",
   },

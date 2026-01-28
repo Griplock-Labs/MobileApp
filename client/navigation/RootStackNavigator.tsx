@@ -13,6 +13,9 @@ import WalletScreen from "@/screens/WalletScreen";
 import ReceivePrivatelyScreen from "@/screens/ReceivePrivatelyScreen";
 import ReceiveScreen from "@/screens/ReceiveScreen";
 import WalletDetailScreen from "@/screens/WalletDetailScreen";
+import ShieldAmountScreen from "@/screens/ShieldAmountScreen";
+import UnshieldAmountScreen from "@/screens/UnshieldAmountScreen";
+import SuccessScreen from "@/screens/SuccessScreen";
 
 export type CardActionParams = {
   actionId: string;
@@ -32,16 +35,25 @@ export type PrivacyActionParams = {
   expiresAt: string;
 };
 
+export type ShieldActionParams = {
+  type: 'shield' | 'unshield';
+  amount: number;
+  unsignedTx: string;
+  txFee: number;
+  walletAddress: string;
+};
+
 export type RootStackParamList = {
   Home: undefined;
   Wallet: undefined;
   QRScanner: { sessionId: string };
-  NFCReader: { sessionId?: string };
+  NFCReader: { sessionId?: string; shieldAction?: ShieldActionParams };
   PINInput: { 
     sessionId: string; 
     nfcData: string;
     cardAction?: CardActionParams;
     privacyAction?: PrivacyActionParams;
+    shieldAction?: ShieldActionParams;
   };
   SignConfirm: undefined;
   CardAction: undefined;
@@ -49,6 +61,9 @@ export type RootStackParamList = {
   Receive: undefined;
   ReceivePrivately: undefined;
   WalletDetail: undefined;
+  ShieldAmount: { walletAddress: string };
+  UnshieldAmount: { walletAddress: string };
+  Success: { actionType?: 'shield' | 'unshield'; amount?: number; signature?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -126,6 +141,21 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="WalletDetail"
         component={WalletDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ShieldAmount"
+        component={ShieldAmountScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="UnshieldAmount"
+        component={UnshieldAmountScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Success"
+        component={SuccessScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

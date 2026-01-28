@@ -234,6 +234,7 @@ export default function NFCReaderScreen() {
         navigation.replace("PINInput", {
           sessionId: route.params?.sessionId || "",
           nfcData: nfcDataString,
+          shieldAction: route.params?.shieldAction,
         });
       }
     } catch (e: any) {
@@ -306,8 +307,10 @@ export default function NFCReaderScreen() {
   };
 
   const isConnected = connectionStatus === "connected";
+  const shieldAction = route.params?.shieldAction;
+  const isMobileInitiatedFlow = !!shieldAction;
 
-  if (!isConnected) {
+  if (!isConnected && !isMobileInitiatedFlow) {
     return (
       <View
         style={[
@@ -369,6 +372,13 @@ export default function NFCReaderScreen() {
 
         <View style={styles.textContainer}>
           <Text style={styles.title}>TAP AND HOLD{"\n"}YOUR CARD</Text>
+          {shieldAction ? (
+            <View style={styles.actionBadge}>
+              <Text style={styles.actionBadgeText}>
+                {shieldAction.type === 'shield' ? 'SHIELD' : 'UNSHIELD'} {shieldAction.amount} SOL
+              </Text>
+            </View>
+          ) : null}
           <Text style={styles.subtitle}>Place your any NFC card near the device</Text>
           <Text style={styles.statusText}>{scanStatus}</Text>
         </View>
@@ -551,6 +561,20 @@ const styles = StyleSheet.create({
   textContainer: {
     alignItems: "center",
     paddingHorizontal: Spacing.xl,
+  },
+  actionBadge: {
+    backgroundColor: "rgba(164, 186, 210, 0.15)",
+    borderWidth: 1,
+    borderColor: "#A4BAD2",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    marginBottom: Spacing.lg,
+  },
+  actionBadgeText: {
+    fontFamily: Fonts.astroSpace,
+    fontSize: 11,
+    color: "#A4BAD2",
+    letterSpacing: 1,
   },
   nfcErrorContainer: {
     alignItems: "center",
