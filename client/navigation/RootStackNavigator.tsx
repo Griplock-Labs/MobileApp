@@ -15,6 +15,7 @@ import ReceiveScreen from "@/screens/ReceiveScreen";
 import WalletDetailScreen from "@/screens/WalletDetailScreen";
 import ShieldAmountScreen from "@/screens/ShieldAmountScreen";
 import UnshieldAmountScreen from "@/screens/UnshieldAmountScreen";
+import PrivateSendScreen from "@/screens/PrivateSendScreen";
 import SuccessScreen from "@/screens/SuccessScreen";
 
 export type CardActionParams = {
@@ -43,17 +44,25 @@ export type ShieldActionParams = {
   walletAddress: string;
 };
 
+export type PrivateSendActionParams = {
+  source: 'public' | 'shielded';
+  recipientAddress: string;
+  amount: number;
+  walletAddress: string;
+};
+
 export type RootStackParamList = {
   Home: undefined;
   Wallet: undefined;
   QRScanner: { sessionId: string };
-  NFCReader: { sessionId?: string; shieldAction?: ShieldActionParams };
+  NFCReader: { sessionId?: string; shieldAction?: ShieldActionParams; privateSendAction?: PrivateSendActionParams };
   PINInput: { 
     sessionId: string; 
     nfcData: string;
     cardAction?: CardActionParams;
     privacyAction?: PrivacyActionParams;
     shieldAction?: ShieldActionParams;
+    privateSendAction?: PrivateSendActionParams;
   };
   SignConfirm: undefined;
   CardAction: undefined;
@@ -63,7 +72,8 @@ export type RootStackParamList = {
   WalletDetail: undefined;
   ShieldAmount: { walletAddress: string };
   UnshieldAmount: { walletAddress: string };
-  Success: { actionType?: 'shield' | 'unshield'; amount?: number; signature?: string };
+  PrivateSend: { walletAddress: string };
+  Success: { actionType?: 'shield' | 'unshield' | 'privateSend'; amount?: number; amountReceived?: number; signature?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -151,6 +161,11 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="UnshieldAmount"
         component={UnshieldAmountScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PrivateSend"
+        component={PrivateSendScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

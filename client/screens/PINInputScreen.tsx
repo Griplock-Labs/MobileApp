@@ -20,6 +20,12 @@ import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
 import { deriveSolanaAddress, deriveSolanaKeypair } from "@/lib/crypto";
 import { signAndBroadcastTransaction } from "@/lib/shield-transaction";
+import { 
+  preparePrivateSend, 
+  executePrivateSend, 
+  signEncryptionMessage,
+  signTransaction 
+} from "@/lib/private-send-api";
 import ScreenHeader from "@/components/ScreenHeader";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "PINInput">;
@@ -396,6 +402,114 @@ export default function PINInputScreen() {
                     actionType: shieldAction.type,
                     amount: shieldAction.amount,
                     signature: result.signature,
+                  }
+                }],
+              });
+              return;
+            }
+
+            // Mobile-initiated Private Send Flow (via Dashboard API)
+            if (route.params?.privateSendAction) {
+              console.log('[PIN] === Private Send Flow START ===');
+              console.log('[PIN] Private send action flow detected');
+              const privateSendAction = route.params.privateSendAction;
+              console.log('[PIN] Action details:', JSON.stringify(privateSendAction, null, 2));
+              console.log('[PIN] Source:', privateSendAction.source);
+
+              console.log('[PIN] Deriving wallet keypair for private send...');
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
+              const derivedAddress = keypair.publicKey.toBase58();
+              console.log('[PIN] Derived address:', derivedAddress);
+              console.log('[PIN] Expected wallet:', privateSendAction.walletAddress);
+
+              await new Promise(resolve => setTimeout(resolve, 800));
+
+              if (derivedAddress !== privateSendAction.walletAddress) {
+                console.log('[PIN] Wallet mismatch - invalid card or PIN');
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                throw new Error("Invalid card or PIN");
+              }
+
+              console.log('[PIN] Wallet verified, calling Dashboard API...');
+              
+              // Step 1: Prepare transaction via Dashboard
+              console.log('[PIN] Step 1: Calling /api/private-send/prepare...');
+              const prepareResult = await preparePrivateSend({
+                source: privateSendAction.source,
+                senderPublicKey: derivedAddress,
+                recipientAddress: privateSendAction.recipientAddress,
+                amount: privateSendAction.amount,
+              });
+
+              if (!prepareResult.success || !prepareResult.unsignedTx) {
+                console.log('[PIN] Prepare failed:', prepareResult.error);
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                setPin("");
+                setIsProcessing(false);
+                setTxErrorMessage(prepareResult.error || "Failed to prepare transaction");
+                setTxErrorModalVisible(true);
+                return;
+              }
+
+              console.log('[PIN] Prepare successful, fees:', prepareResult.fees);
+              console.log('[PIN] Amount received:', prepareResult.amountReceived);
+
+              // Step 2: Sign the unsigned transaction
+              console.log('[PIN] Step 2: Signing transaction...');
+              const signedTx = signTransaction(prepareResult.unsignedTx, keypair);
+              
+              // Step 3: Sign encryption message for ZK proof
+              console.log('[PIN] Step 3: Signing encryption message...');
+              const encryptionSignature = signEncryptionMessage(keypair);
+
+              // Step 4: Execute via Dashboard
+              console.log('[PIN] Step 4: Calling /api/private-send/execute...');
+              const executeResult = await executePrivateSend({
+                signedTx,
+                encryptionSignature,
+                source: privateSendAction.source,
+                senderPublicKey: derivedAddress,
+                recipientAddress: privateSendAction.recipientAddress,
+                amount: privateSendAction.amount,
+              });
+              
+              if (!executeResult.success) {
+                console.log('[PIN] Execute failed:', executeResult.error);
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                setPin("");
+                setIsProcessing(false);
+                setTxErrorMessage(executeResult.error || "Private send failed");
+                setTxErrorModalVisible(true);
+                return;
+              }
+
+              console.log('[PIN] Private send successful!');
+              console.log('[PIN] Signature:', executeResult.signature);
+              console.log('[PIN] Amount received:', executeResult.amountReceived);
+              console.log('[PIN] === Private Send Flow COMPLETE ===');
+              if (Platform.OS !== "web") {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+
+              setSolanaKeypair(keypair);
+              setWalletAddress(derivedAddress);
+
+              console.log('[PIN] Navigating to Success screen...');
+              navigation.reset({
+                index: 0,
+                routes: [{ 
+                  name: 'Success',
+                  params: {
+                    actionType: 'privateSend',
+                    amount: privateSendAction.amount,
+                    amountReceived: executeResult.amountReceived,
+                    signature: executeResult.signature,
                   }
                 }],
               });

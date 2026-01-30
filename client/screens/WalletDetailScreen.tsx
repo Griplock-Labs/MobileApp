@@ -194,6 +194,15 @@ export default function WalletDetailScreen() {
 
   const handleSendPrivately = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!walletAddress) {
+      Alert.alert("Error", "Wallet not connected");
+      return;
+    }
+    if (privateBalance <= 0) {
+      Alert.alert("No Balance", "You need private balance to send privately");
+      return;
+    }
+    navigation.navigate("PrivateSend", { walletAddress });
   };
 
   return (

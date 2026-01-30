@@ -231,10 +231,17 @@ export default function NFCReaderScreen() {
         scanningRef.current = false;
         
         console.log('[NFC] Navigating to PINInput with sessionId:', route.params?.sessionId);
+        if (route.params?.privateSendAction) {
+          console.log('[NFC] privateSendAction detected:', JSON.stringify(route.params.privateSendAction, null, 2));
+        }
+        if (route.params?.shieldAction) {
+          console.log('[NFC] shieldAction detected:', JSON.stringify(route.params.shieldAction, null, 2));
+        }
         navigation.replace("PINInput", {
           sessionId: route.params?.sessionId || "",
           nfcData: nfcDataString,
           shieldAction: route.params?.shieldAction,
+          privateSendAction: route.params?.privateSendAction,
         });
       }
     } catch (e: any) {
@@ -308,7 +315,8 @@ export default function NFCReaderScreen() {
 
   const isConnected = connectionStatus === "connected";
   const shieldAction = route.params?.shieldAction;
-  const isMobileInitiatedFlow = !!shieldAction;
+  const privateSendAction = route.params?.privateSendAction;
+  const isMobileInitiatedFlow = !!shieldAction || !!privateSendAction;
 
   if (!isConnected && !isMobileInitiatedFlow) {
     return (
@@ -376,6 +384,13 @@ export default function NFCReaderScreen() {
             <View style={styles.actionBadge}>
               <Text style={styles.actionBadgeText}>
                 {shieldAction.type === 'shield' ? 'SHIELD' : 'UNSHIELD'} {shieldAction.amount} SOL
+              </Text>
+            </View>
+          ) : null}
+          {privateSendAction ? (
+            <View style={styles.actionBadge}>
+              <Text style={styles.actionBadgeText}>
+                SEND PRIVATE {privateSendAction.amount} SOL
               </Text>
             </View>
           ) : null}

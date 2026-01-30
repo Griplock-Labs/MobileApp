@@ -49,7 +49,7 @@ export default function SuccessScreen() {
   const route = useRoute<RouteProps>();
   const insets = useSafeAreaInsets();
   
-  const { actionType, amount, signature } = route.params || {};
+  const { actionType, amount, amountReceived, signature } = route.params || {};
   
   const scaleAnim = useSharedValue(0);
   const opacityAnim = useSharedValue(0);
@@ -74,8 +74,26 @@ export default function SuccessScreen() {
     opacity: opacityAnim.value,
   }));
   
-  const title = actionType === 'shield' ? 'FUND SHIELDED' : actionType === 'unshield' ? 'FUND UNSHIELDED' : 'TRANSACTION COMPLETE';
-  const subtitle = actionType === 'shield' ? 'Successfully shielded' : actionType === 'unshield' ? 'Successfully unshielded' : 'Transaction completed';
+  const getTitle = () => {
+    switch (actionType) {
+      case 'shield': return 'FUND SHIELDED';
+      case 'unshield': return 'FUND UNSHIELDED';
+      case 'privateSend': return 'SENT PRIVATELY';
+      default: return 'TRANSACTION COMPLETE';
+    }
+  };
+  
+  const getSubtitle = () => {
+    switch (actionType) {
+      case 'shield': return 'Successfully shielded';
+      case 'unshield': return 'Successfully unshielded';
+      case 'privateSend': return 'Sent via Privacy Cash';
+      default: return 'Transaction completed';
+    }
+  };
+  
+  const title = getTitle();
+  const subtitle = getSubtitle();
   
   return (
     <ImageBackground
@@ -90,7 +108,18 @@ export default function SuccessScreen() {
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
           
-          {amount !== undefined ? (
+          {actionType === 'privateSend' && amount !== undefined ? (
+            <View style={styles.amountContainer}>
+              <Text style={styles.amountLabel}>Sent</Text>
+              <Text style={styles.amountValue}>{amount} SOL</Text>
+              {amountReceived !== undefined ? (
+                <>
+                  <Text style={styles.receivedLabel}>Recipient receives</Text>
+                  <Text style={styles.receivedValue}>{amountReceived.toFixed(4)} SOL</Text>
+                </>
+              ) : null}
+            </View>
+          ) : amount !== undefined ? (
             <Text style={styles.amountValue}>{amount} SOL</Text>
           ) : null}
         </Animated.View>
@@ -150,10 +179,31 @@ const styles = StyleSheet.create({
     color: "#4ADE80",
     marginBottom: Spacing.xl,
   },
+  amountContainer: {
+    alignItems: "center",
+  },
+  amountLabel: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+    marginBottom: Spacing.xs,
+  },
   amountValue: {
     fontFamily: Fonts.circular.bold,
     fontSize: 28,
     color: Colors.dark.text,
+  },
+  receivedLabel: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xs,
+  },
+  receivedValue: {
+    fontFamily: Fonts.circular.bold,
+    fontSize: 22,
+    color: "#4ADE80",
   },
   logoContainer: {
     flex: 1,
