@@ -16,6 +16,10 @@ import WalletDetailScreen from "@/screens/WalletDetailScreen";
 import ShieldAmountScreen from "@/screens/ShieldAmountScreen";
 import UnshieldAmountScreen from "@/screens/UnshieldAmountScreen";
 import PrivateSendScreen from "@/screens/PrivateSendScreen";
+import SendScreen from "@/screens/SendScreen";
+import PrivateSendProcessScreen from "@/screens/PrivateSendProcessScreen";
+import ShieldProcessScreen from "@/screens/ShieldProcessScreen";
+import ProcessingScreen from "@/screens/ProcessingScreen";
 import SuccessScreen from "@/screens/SuccessScreen";
 
 export type CardActionParams = {
@@ -51,11 +55,17 @@ export type PrivateSendActionParams = {
   walletAddress: string;
 };
 
+export type SendActionParams = {
+  recipientAddress: string;
+  amount: number;
+  walletAddress: string;
+};
+
 export type RootStackParamList = {
   Home: undefined;
   Wallet: undefined;
   QRScanner: { sessionId: string };
-  NFCReader: { sessionId?: string; shieldAction?: ShieldActionParams; privateSendAction?: PrivateSendActionParams };
+  NFCReader: { sessionId?: string; shieldAction?: ShieldActionParams; privateSendAction?: PrivateSendActionParams; sendAction?: SendActionParams };
   PINInput: { 
     sessionId: string; 
     nfcData: string;
@@ -63,6 +73,7 @@ export type RootStackParamList = {
     privacyAction?: PrivacyActionParams;
     shieldAction?: ShieldActionParams;
     privateSendAction?: PrivateSendActionParams;
+    sendAction?: SendActionParams;
   };
   SignConfirm: undefined;
   CardAction: undefined;
@@ -73,7 +84,25 @@ export type RootStackParamList = {
   ShieldAmount: { walletAddress: string };
   UnshieldAmount: { walletAddress: string };
   PrivateSend: { walletAddress: string };
-  Success: { actionType?: 'shield' | 'unshield' | 'privateSend'; amount?: number; amountReceived?: number; signature?: string };
+  Send: { walletAddress: string };
+  PrivateSendProcess: { 
+    privateSendAction: PrivateSendActionParams;
+    keypairSecretKey: number[];
+  };
+  ShieldProcess: {
+    shieldAction: ShieldActionParams;
+    keypairSecretKey: number[];
+  };
+  Processing: {
+    actionType: 'shield' | 'unshield' | 'privateSend' | 'send';
+    amount: number;
+    source?: 'public' | 'shielded';
+    recipient?: string;
+    keypairSecretKey: number[];
+    unsignedTx?: string;
+    walletAddress: string;
+  };
+  Success: { actionType?: 'shield' | 'unshield' | 'privateSend' | 'send'; amount?: number; amountReceived?: number; signature?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -166,6 +195,26 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="PrivateSend"
         component={PrivateSendScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Send"
+        component={SendScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PrivateSendProcess"
+        component={PrivateSendProcessScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ShieldProcess"
+        component={ShieldProcessScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Processing"
+        component={ProcessingScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

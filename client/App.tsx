@@ -1,6 +1,7 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { StyleSheet } from "react-native";
-import { NavigationContainer, DarkTheme } from "@react-navigation/native";
+import { NavigationContainer, DarkTheme, NavigationContainerRef } from "@react-navigation/native";
+import { logScreenView, logSessionStart } from "@/lib/analytics";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -39,6 +40,9 @@ const GriplockDarkTheme = {
 };
 
 export default function App() {
+  const navigationRef = useRef<NavigationContainerRef<any>>(null);
+  const routeNameRef = useRef<string | undefined>(undefined);
+
   const [customFontsLoaded] = useFonts({
     "CircularStd-Black": require("../assets/fonts/CircularStd-Black.ttf"),
     "CircularStd-Bold": require("../assets/fonts/CircularStd-Bold.ttf"),
@@ -59,8 +63,23 @@ export default function App() {
   useEffect(() => {
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
+      logSessionStart();
     }
   }, [fontsLoaded, fontError]);
+
+  const onNavigationReady = () => {
+    routeNameRef.current = navigationRef.current?.getCurrentRoute()?.name;
+  };
+
+  const onNavigationStateChange = () => {
+    const previousRouteName = routeNameRef.current;
+    const currentRouteName = navigationRef.current?.getCurrentRoute()?.name;
+
+    if (previousRouteName !== currentRouteName && currentRouteName) {
+      logScreenView(currentRouteName);
+    }
+    routeNameRef.current = currentRouteName;
+  };
 
   if (!fontsLoaded && !fontError) {
     return null;
@@ -73,7 +92,12 @@ export default function App() {
           <SafeAreaProvider>
             <GestureHandlerRootView style={styles.root}>
               <KeyboardProvider>
-                <NavigationContainer theme={GriplockDarkTheme}>
+                <NavigationContainer 
+                  ref={navigationRef}
+                  theme={GriplockDarkTheme}
+                  onReady={onNavigationReady}
+                  onStateChange={onNavigationStateChange}
+                >
                   <RootStackNavigator />
                 </NavigationContainer>
                 <StatusBar style="light" />

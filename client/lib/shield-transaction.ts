@@ -246,9 +246,18 @@ export async function signAndBroadcastTransaction(
     const txBuffer = Buffer.from(unsignedTxBase64, 'base64');
     const transaction = VersionedTransaction.deserialize(txBuffer);
     
+    // Fetch fresh blockhash to avoid "blockhash not found" error
+    // This is necessary because user may take time with NFC + PIN flow
+    console.log('[Broadcast] Fetching fresh blockhash...');
+    const conn = getConnection();
+    const { blockhash } = await conn.getLatestBlockhash('confirmed');
+    console.log('[Broadcast] Fresh blockhash:', blockhash.slice(0, 16) + '...');
+    
+    // Update the transaction message with fresh blockhash
+    transaction.message.recentBlockhash = blockhash;
+    
     transaction.sign([keypair]);
 
-    const conn = getConnection();
     const signature = await conn.sendRawTransaction(transaction.serialize(), {
       skipPreflight: false,
       preflightCommitment: 'confirmed',

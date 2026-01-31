@@ -1,7 +1,7 @@
 import { Connection, PublicKey, LAMPORTS_PER_SOL, Keypair } from '@solana/web3.js';
 import Constants from 'expo-constants';
 
-const HELIUS_RPC_URL = Constants.expoConfig?.extra?.HELIUS_RPC_URL || process.env.EXPO_PUBLIC_HELIUS_RPC_URL;
+const HELIUS_RPC_URL = process.env.EXPO_PUBLIC_HELIUS_RPC_URL || Constants.expoConfig?.extra?.HELIUS_RPC_URL;
 
 let connection: Connection | null = null;
 

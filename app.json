@@ -2,7 +2,7 @@
   "expo": {
     "name": "GRIPLOCK",
     "slug": "griplock",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "griplock",
@@ -21,7 +21,8 @@
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/images/icon.png"
       },
-      "package": "com.griplock.mobile",
+      "package": "com.griplock.app",
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -61,12 +62,14 @@
           ],
           "systemCodes": []
         }
-      ]
+      ],
+      "@react-native-firebase/app"
     ],
     "experiments": {
       "reactCompiler": false
     },
     "extra": {
+      "HELIUS_RPC_URL": "${EXPO_PUBLIC_HELIUS_RPC_URL}",
       "eas": {
         "projectId": "af453638-adee-4bbe-a28e-d5a8da1874c4"
       }

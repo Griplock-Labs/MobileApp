@@ -21,6 +21,7 @@ import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
 import ScreenHeader from "@/components/ScreenHeader";
+import { logNFCTap, logEvent } from "@/lib/analytics";
 
 let NfcManager: any = null;
 let NfcTech: any = null;
@@ -213,6 +214,7 @@ export default function NFCReaderScreen() {
       
       if (tag) {
         console.log('[NFC] Tag detected:', JSON.stringify(tag));
+        logNFCTap(true);
         if (Platform.OS !== "web") {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
@@ -237,14 +239,19 @@ export default function NFCReaderScreen() {
         if (route.params?.shieldAction) {
           console.log('[NFC] shieldAction detected:', JSON.stringify(route.params.shieldAction, null, 2));
         }
+        if (route.params?.sendAction) {
+          console.log('[NFC] sendAction detected:', JSON.stringify(route.params.sendAction, null, 2));
+        }
         navigation.replace("PINInput", {
           sessionId: route.params?.sessionId || "",
           nfcData: nfcDataString,
           shieldAction: route.params?.shieldAction,
           privateSendAction: route.params?.privateSendAction,
+          sendAction: route.params?.sendAction,
         });
       }
     } catch (e: any) {
+      logNFCTap(false);
       setScanStatus("Waiting for card...");
       scanningRef.current = false;
       
@@ -316,7 +323,8 @@ export default function NFCReaderScreen() {
   const isConnected = connectionStatus === "connected";
   const shieldAction = route.params?.shieldAction;
   const privateSendAction = route.params?.privateSendAction;
-  const isMobileInitiatedFlow = !!shieldAction || !!privateSendAction;
+  const sendAction = route.params?.sendAction;
+  const isMobileInitiatedFlow = !!shieldAction || !!privateSendAction || !!sendAction;
 
   if (!isConnected && !isMobileInitiatedFlow) {
     return (
@@ -391,6 +399,13 @@ export default function NFCReaderScreen() {
             <View style={styles.actionBadge}>
               <Text style={styles.actionBadgeText}>
                 SEND PRIVATE {privateSendAction.amount} SOL
+              </Text>
+            </View>
+          ) : null}
+          {sendAction ? (
+            <View style={styles.actionBadge}>
+              <Text style={styles.actionBadgeText}>
+                SEND {sendAction.amount} SOL
               </Text>
             </View>
           ) : null}

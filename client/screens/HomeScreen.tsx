@@ -9,6 +9,7 @@ import {
   Modal,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
+import Constants from "expo-constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -30,6 +31,7 @@ import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
 import WalletCard from "@/components/WalletCard";
 import BottomNavigation from "@/components/BottomNavigation";
+import { logEvent, logQRScanned, logNFCTap } from "@/lib/analytics";
 
 let NfcManager: any = null;
 let NfcTech: any = null;
@@ -201,6 +203,7 @@ export default function HomeScreen() {
       
       if (tag) {
         console.log('[HomeScreen NFC] Tag detected:', JSON.stringify(tag));
+        logNFCTap(true);
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
         const rawTagId = tag.id || "";
@@ -310,6 +313,7 @@ export default function HomeScreen() {
   };
 
   const handleScanPress = async () => {
+    logEvent('button_press', { button: 'scan_qr' });
     if (Platform.OS !== "web") {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -318,6 +322,7 @@ export default function HomeScreen() {
   };
 
   const handleDisconnect = async () => {
+    logEvent('button_press', { button: 'disconnect_wallet' });
     if (Platform.OS !== "web") {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -504,6 +509,10 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        <View style={styles.versionContainer}>
+          <Text style={styles.versionText}>GRIPLOCK v{Constants.expoConfig?.version || '1.0.0'}</Text>
+        </View>
+
         <BottomNavigation
           activeTab="grid"
           onCenterPress={handleScanPress}
@@ -535,6 +544,16 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: "center",
+  },
+  versionContainer: {
+    alignItems: "center",
+    marginBottom: Spacing.md,
+  },
+  versionText: {
+    fontFamily: Fonts.circular.book,
+    fontSize: 11,
+    color: "rgba(255, 255, 255, 0.35)",
+    letterSpacing: 1,
   },
   title: {
     fontFamily: Fonts.circular.black,

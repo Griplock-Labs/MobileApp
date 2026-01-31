@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -7,19 +7,29 @@ import {
   Pressable,
   useWindowDimensions,
   Alert,
+  Platform,
+  ActivityIndicator,
 } from "react-native";
 import Svg, { Path, Rect, Line } from "react-native-svg";
 import * as Haptics from "expo-haptics";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import ScreenHeader from "@/components/ScreenHeader";
+import TransactionHistoryCard from "@/components/TransactionHistoryCard";
+import ASCIILoader from "@/components/ASCIILoader";
 import { Spacing, Fonts } from "@/constants/theme";
 import { useWebRTC } from "@/context/WebRTCContext";
 import { getBalance } from "@/lib/solana-rpc";
 import { getCompressedBalance } from "@/lib/private-shield";
 import { PublicKey } from "@solana/web3.js";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
+import {
+  WalletTransaction,
+  fetchTransactionHistory,
+  retryTransaction,
+  refundTransaction,
+} from "@/lib/transaction-history-api";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "WalletDetail">;
 
@@ -129,6 +139,129 @@ export default function WalletDetailScreen() {
   const { walletAddress } = useWebRTC();
   const [publicBalance, setPublicBalance] = useState(0);
   const [privateBalance, setPrivateBalance] = useState(0);
+  
+  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchHistory = useCallback(async () => {
+    console.log('[WalletDetail] fetchHistory called, walletAddress:', walletAddress);
+    
+    if (!walletAddress) {
+      console.log('[WalletDetail] No walletAddress, skipping fetch');
+      setTransactions([]);
+      return;
+    }
+
+    setHistoryLoading(true);
+    try {
+      console.log('[WalletDetail] Fetching transaction history...');
+      const result = await fetchTransactionHistory(walletAddress);
+      console.log('[WalletDetail] History result:', result.success, 'count:', result.transactions?.length || 0);
+      if (result.success) {
+        setTransactions(result.transactions);
+      }
+    } catch (error) {
+      console.error('[WalletDetail] Failed to fetch history:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [walletAddress]);
+
+  const hasPendingTransactions = transactions.some(tx => tx.status === 'pending');
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchHistory();
+      
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+      pollingRef.current = setInterval(() => {
+        if (hasPendingTransactions) {
+          fetchHistory();
+        }
+      }, 8000);
+
+      return () => {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      };
+    }, [fetchHistory, hasPendingTransactions])
+  );
+
+  const handleRetryPress = (quoteId: string) => {
+    Alert.alert(
+      'Retry Transaction',
+      'Attempt to complete the failed transaction?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Retry', onPress: () => executeRetry(quoteId) },
+      ]
+    );
+  };
+
+  const handleRefundPress = (quoteId: string) => {
+    Alert.alert(
+      'Refund Transaction',
+      'Request a refund? Funds will be returned (minus gas fees spent).',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Refund', onPress: () => executeRefund(quoteId) },
+      ]
+    );
+  };
+
+  const executeRetry = async (quoteId: string) => {
+    setActionLoading(true);
+
+    try {
+      const result = await retryTransaction(quoteId);
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(
+          result.success ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error
+        );
+      }
+      Alert.alert(
+        result.success ? 'Success' : 'Failed',
+        result.success 
+          ? `Transaction completed!\nSignature: ${result.signature?.slice(0, 12)}...`
+          : result.error || 'Retry failed'
+      );
+      fetchHistory();
+    } catch (error) {
+      Alert.alert('Error', error instanceof Error ? error.message : 'Retry failed');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const executeRefund = async (quoteId: string) => {
+    setActionLoading(true);
+
+    try {
+      const result = await refundTransaction(quoteId);
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(
+          result.success ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error
+        );
+      }
+      Alert.alert(
+        result.success ? 'Success' : 'Failed',
+        result.success 
+          ? `Refunded ${result.amountRefunded} SOL to your wallet`
+          : result.error || 'Refund failed'
+      );
+      fetchHistory();
+    } catch (error) {
+      Alert.alert('Error', error instanceof Error ? error.message : 'Refund failed');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const fetchBalances = useCallback(async () => {
     if (!walletAddress) {
@@ -182,14 +315,33 @@ export default function WalletDetailScreen() {
 
   const handleReceive = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!walletAddress) {
+      Alert.alert("Error", "Wallet not connected");
+      return;
+    }
+    navigation.navigate("Receive");
   };
 
   const handleReceivePrivately = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!walletAddress) {
+      Alert.alert("Error", "Wallet not connected");
+      return;
+    }
+    navigation.navigate("ReceivePrivately");
   };
 
   const handleSend = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!walletAddress) {
+      Alert.alert("Error", "Wallet not connected");
+      return;
+    }
+    if (publicBalance <= 0) {
+      Alert.alert("No Balance", "You need public balance to send");
+      return;
+    }
+    navigation.navigate("Send", { walletAddress });
   };
 
   const handleSendPrivately = async () => {
@@ -205,11 +357,16 @@ export default function WalletDetailScreen() {
     navigation.navigate("PrivateSend", { walletAddress });
   };
 
+  const handleBack = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.goBack();
+  };
+
   return (
     <View style={styles.container}>
       <ScreenHeader 
         leftText="back" 
-        rightText="Settings"
+        onBack={handleBack}
       />
 
       <ScrollView 
@@ -245,7 +402,7 @@ export default function WalletDetailScreen() {
           <View style={styles.horizontalDivider} />
           <View style={styles.actionsRow}>
             <View style={styles.gridCell}>
-              <GridActionButton label="Receive" onPress={handleReceive} />
+              <GridActionButton label="Send privately" onPress={handleSendPrivately} />
             </View>
             <View style={styles.verticalDivider} />
             <View style={styles.gridCell}>
@@ -267,11 +424,36 @@ export default function WalletDetailScreen() {
 
         <Text style={styles.transactionsTitle}>Transactions</Text>
 
-        <View style={styles.emptyState}>
-          <EmptyBoxIcon />
-          <Text style={styles.emptyStateText}>No transaction history yet</Text>
-        </View>
+        {historyLoading ? (
+          <View style={styles.loadingState}>
+            <ASCIILoader size="small" />
+            <Text style={styles.loadingHistoryText}>LOADING HISTORY...</Text>
+          </View>
+        ) : transactions.length > 0 ? (
+          <View style={styles.transactionsList}>
+            {transactions.map((tx) => (
+              <TransactionHistoryCard
+                key={tx.id}
+                transaction={tx}
+                onRetry={handleRetryPress}
+                onRefund={handleRefundPress}
+              />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyState}>
+            <EmptyBoxIcon />
+            <Text style={styles.emptyStateText}>No transaction history yet</Text>
+          </View>
+        )}
       </ScrollView>
+
+      {actionLoading ? (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#FFFFFF" />
+          <Text style={styles.loadingText}>PROCESSING...</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -289,11 +471,12 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   walletTitle: {
-    fontFamily: "Orbitron_400Regular",
-    fontSize: 16,
+    fontFamily: "AstroSpace",
+    fontSize: 18,
     color: "#FFFFFF",
     textAlign: "center",
-    marginBottom: 32,
+    marginTop: 24,
+    marginBottom: 16,
   },
   balanceSection: {
     paddingVertical: 16,
@@ -402,5 +585,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.4)",
     marginTop: 16,
+  },
+  loadingState: {
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  loadingHistoryText: {
+    fontFamily: Fonts.heading,
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.6)",
+    marginTop: 12,
+    letterSpacing: 2,
+  },
+  transactionsList: {
+    gap: 0,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  loadingText: {
+    fontFamily: Fonts.heading,
+    fontSize: 14,
+    color: '#FFFFFF',
+    marginTop: 16,
+    letterSpacing: 2,
   },
 });

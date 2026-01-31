@@ -75,7 +75,11 @@ export default function ScreenHeader({
       <View style={styles.header}>
         <View style={styles.leftSection}>
           {showBack ? (
-            <Pressable onPress={handleBack} style={styles.backButton}>
+            <Pressable 
+              onPress={handleBack} 
+              style={styles.backButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <BackArrowIcon />
               <Text style={styles.leftText}>{leftText}</Text>
             </Pressable>

@@ -16,6 +16,7 @@ import BottomNavigation from "@/components/BottomNavigation";
 import CyberpunkModal from "@/components/CyberpunkModal";
 import { getBalance } from "@/lib/solana-rpc";
 import { getCompressedBalance } from "@/lib/private-shield";
+import { logEvent } from "@/lib/analytics";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "Wallet">;
 
@@ -71,7 +72,7 @@ function CreateWalletButton({ onPress }: { onPress: () => void }) {
         <Path d="M9.5 0.5H0.5V9.5" stroke="white" strokeWidth={1} fill="none" />
         <Path d="M0.5 29.5L0.5 38.5L9.5 38.5" stroke="white" strokeWidth={1} fill="none" />
       </Svg>
-      <Text style={styles.createWalletText}>Add more</Text>
+      <Text style={styles.createWalletText}>Tap Another Key</Text>
     </Pressable>
   );
 }
@@ -82,6 +83,8 @@ export default function WalletScreen() {
   const { walletAddress } = useWebRTC();
   const [addMoreModalVisible, setAddMoreModalVisible] = useState(false);
   const [privateInfoModalVisible, setPrivateInfoModalVisible] = useState(false);
+  const [balanceErrorModalVisible, setBalanceErrorModalVisible] = useState(false);
+  const [balanceErrorMessage, setBalanceErrorMessage] = useState('');
   const [publicBalance, setPublicBalance] = useState(0);
   const [privateBalance, setPrivateBalance] = useState(0);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
@@ -110,6 +113,9 @@ export default function WalletScreen() {
       console.log('[WalletScreen] Private balance:', compressedBal, 'SOL');
     } catch (error) {
       console.error('[WalletScreen] Failed to fetch balances:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to fetch balance';
+      setBalanceErrorMessage(errorMsg);
+      setBalanceErrorModalVisible(true);
     } finally {
       setIsLoadingBalance(false);
     }
@@ -120,31 +126,37 @@ export default function WalletScreen() {
   }, [fetchBalances]);
 
   const handleReceive = async () => {
+    logEvent('button_press', { button: 'receive', screen: 'wallet' });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate("Receive");
   };
 
   const handleReceivePrivately = async () => {
+    logEvent('button_press', { button: 'receive_privately', screen: 'wallet' });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate("ReceivePrivately");
   };
 
   const handleCreateWallet = async () => {
+    logEvent('button_press', { button: 'tap_another_key', screen: 'wallet' });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setAddMoreModalVisible(true);
   };
 
   const handleScan = async () => {
+    logEvent('button_press', { button: 'scan_qr', screen: 'wallet' });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     navigation.navigate("QRScanner", { sessionId: "" });
   };
 
   const handlePrivateBalanceInfo = async () => {
+    logEvent('button_press', { button: 'private_balance_info', screen: 'wallet' });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setPrivateInfoModalVisible(true);
   };
 
   const handleWalletDetail = async () => {
+    logEvent('button_press', { button: 'wallet_detail', screen: 'wallet' });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate("WalletDetail");
   };
@@ -219,6 +231,19 @@ export default function WalletScreen() {
             Hidden funds that only you can see. This balance is invisible to everyone else on the blockchain.{"\n\n"}
             These funds are locked. To use them, unshield first to move to your public balance.{"\n\n"}
             Go to Wallet Details to shield or unshield your funds.
+          </Text>
+        </View>
+      </CyberpunkModal>
+
+      <CyberpunkModal
+        visible={balanceErrorModalVisible}
+        onClose={() => setBalanceErrorModalVisible(false)}
+      >
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>CONNECTION ERROR</Text>
+          <Text style={styles.modalDescription}>
+            Failed to fetch wallet balance.{"\n\n"}
+            {balanceErrorMessage}
           </Text>
         </View>
       </CyberpunkModal>

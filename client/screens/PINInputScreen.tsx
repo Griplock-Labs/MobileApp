@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { View, StyleSheet, Platform, Pressable, Text, InteractionManager, Modal } from "react-native";
+import { View, StyleSheet, Platform, Pressable, Text, InteractionManager } from "react-native";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
@@ -19,14 +19,9 @@ import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
 import { deriveSolanaAddress, deriveSolanaKeypair } from "@/lib/crypto";
-import { signAndBroadcastTransaction } from "@/lib/shield-transaction";
-import { 
-  preparePrivateSend, 
-  executePrivateSend, 
-  signEncryptionMessage,
-  signTransaction 
-} from "@/lib/private-send-api";
 import ScreenHeader from "@/components/ScreenHeader";
+import CyberpunkErrorModal from "@/components/CyberpunkErrorModal";
+import { logPINAttempt, logWalletDerived, logEvent } from "@/lib/analytics";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "PINInput">;
 type RouteProps = RouteProp<RootStackParamList, "PINInput">;
@@ -146,6 +141,8 @@ export default function PINInputScreen() {
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
   const [txErrorModalVisible, setTxErrorModalVisible] = useState(false);
   const [txErrorMessage, setTxErrorMessage] = useState("");
+  const [pinErrorModalVisible, setPinErrorModalVisible] = useState(false);
+  const [pinErrorMessage, setPinErrorMessage] = useState("");
   const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { sendWalletAddress, setWalletAddress, setSolanaKeypair, status: connectionStatus, cleanup, notifyAttemptUpdate, walletAddress: connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction, clearPendingPrivacyAction, sendPrivacyActionResponse } = useWebRTC();
   
@@ -264,7 +261,11 @@ export default function PINInputScreen() {
                 if (Platform.OS !== "web") {
                   await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 }
-                throw new Error("Invalid card or PIN");
+                setPin("");
+                setIsProcessing(false);
+                setPinErrorMessage("Wrong card or PIN. The derived wallet address doesn't match.");
+                setPinErrorModalVisible(true);
+                return;
               }
 
               console.log('[PIN] Wallet verified, calling API to approve action...');
@@ -327,7 +328,11 @@ export default function PINInputScreen() {
                 if (Platform.OS !== "web") {
                   await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 }
-                throw new Error("Invalid card or PIN");
+                setPin("");
+                setIsProcessing(false);
+                setPinErrorMessage("Wrong card or PIN. The derived wallet address doesn't match.");
+                setPinErrorModalVisible(true);
+                return;
               }
 
               console.log('[PIN] Wallet verified, sending approval...');
@@ -367,56 +372,75 @@ export default function PINInputScreen() {
                 if (Platform.OS !== "web") {
                   await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 }
-                throw new Error("Invalid card or PIN");
+                setPin("");
+                setIsProcessing(false);
+                setPinErrorMessage("Wrong card or PIN. The derived wallet address doesn't match.");
+                setPinErrorModalVisible(true);
+                return;
               }
 
-              console.log('[PIN] Wallet verified, signing and broadcasting transaction...');
-              
-              const result = await signAndBroadcastTransaction(keypair, shieldAction.unsignedTx);
-              
-              if (!result.success) {
-                console.log('[PIN] Transaction failed:', result.error);
+              console.log('[PIN] Wallet verified, navigating to Processing...');
+              if (Platform.OS !== "web") {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+
+              navigation.replace('Processing', {
+                actionType: shieldAction.type,
+                amount: shieldAction.amount,
+                source: 'public',
+                keypairSecretKey: Array.from(keypair.secretKey),
+                unsignedTx: shieldAction.unsignedTx,
+                walletAddress: shieldAction.walletAddress,
+              });
+              return;
+            }
+
+            // Mobile-initiated Send Flow (regular transfer)
+            if (route.params?.sendAction) {
+              console.log('[PIN] Send flow detected');
+              const sendAction = route.params.sendAction;
+
+              console.log('[PIN] Deriving wallet keypair...');
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
+              const derivedAddress = keypair.publicKey.toBase58();
+              console.log('[PIN] Derived address:', derivedAddress);
+              console.log('[PIN] Expected wallet:', sendAction.walletAddress);
+
+              await new Promise(resolve => setTimeout(resolve, 800));
+
+              if (derivedAddress !== sendAction.walletAddress) {
+                console.log('[PIN] Wallet mismatch - invalid card or PIN');
                 if (Platform.OS !== "web") {
                   await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 }
                 setPin("");
                 setIsProcessing(false);
-                setTxErrorMessage(result.error || "Transaction failed");
-                setTxErrorModalVisible(true);
+                setPinErrorMessage("Wrong card or PIN. The derived wallet address doesn't match.");
+                setPinErrorModalVisible(true);
                 return;
               }
 
-              console.log('[PIN] Transaction successful, signature:', result.signature);
+              console.log('[PIN] Wallet verified, navigating to Processing...');
               if (Platform.OS !== "web") {
                 await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
 
-              setSolanaKeypair(keypair);
-              setWalletAddress(derivedAddress);
-
-              navigation.reset({
-                index: 0,
-                routes: [{ 
-                  name: 'Success',
-                  params: {
-                    actionType: shieldAction.type,
-                    amount: shieldAction.amount,
-                    signature: result.signature,
-                  }
-                }],
+              navigation.replace('Processing', {
+                actionType: 'send',
+                amount: sendAction.amount,
+                recipient: sendAction.recipientAddress,
+                keypairSecretKey: Array.from(keypair.secretKey),
+                walletAddress: sendAction.walletAddress,
               });
               return;
             }
 
-            // Mobile-initiated Private Send Flow (via Dashboard API)
+            // Mobile-initiated Private Send Flow
             if (route.params?.privateSendAction) {
-              console.log('[PIN] === Private Send Flow START ===');
-              console.log('[PIN] Private send action flow detected');
+              console.log('[PIN] Private Send flow detected');
               const privateSendAction = route.params.privateSendAction;
-              console.log('[PIN] Action details:', JSON.stringify(privateSendAction, null, 2));
-              console.log('[PIN] Source:', privateSendAction.source);
 
-              console.log('[PIN] Deriving wallet keypair for private send...');
+              console.log('[PIN] Deriving wallet keypair...');
               const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
               const derivedAddress = keypair.publicKey.toBase58();
               console.log('[PIN] Derived address:', derivedAddress);
@@ -429,89 +453,25 @@ export default function PINInputScreen() {
                 if (Platform.OS !== "web") {
                   await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 }
-                throw new Error("Invalid card or PIN");
-              }
-
-              console.log('[PIN] Wallet verified, calling Dashboard API...');
-              
-              // Step 1: Prepare transaction via Dashboard
-              console.log('[PIN] Step 1: Calling /api/private-send/prepare...');
-              const prepareResult = await preparePrivateSend({
-                source: privateSendAction.source,
-                senderPublicKey: derivedAddress,
-                recipientAddress: privateSendAction.recipientAddress,
-                amount: privateSendAction.amount,
-              });
-
-              if (!prepareResult.success || !prepareResult.unsignedTx) {
-                console.log('[PIN] Prepare failed:', prepareResult.error);
-                if (Platform.OS !== "web") {
-                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                }
                 setPin("");
                 setIsProcessing(false);
-                setTxErrorMessage(prepareResult.error || "Failed to prepare transaction");
-                setTxErrorModalVisible(true);
+                setPinErrorMessage("Wrong card or PIN. The derived wallet address doesn't match.");
+                setPinErrorModalVisible(true);
                 return;
               }
 
-              console.log('[PIN] Prepare successful, fees:', prepareResult.fees);
-              console.log('[PIN] Amount received:', prepareResult.amountReceived);
-
-              // Step 2: Sign the unsigned transaction
-              console.log('[PIN] Step 2: Signing transaction...');
-              const signedTx = signTransaction(prepareResult.unsignedTx, keypair);
-              
-              // Step 3: Sign encryption message for ZK proof
-              console.log('[PIN] Step 3: Signing encryption message...');
-              const encryptionSignature = signEncryptionMessage(keypair);
-
-              // Step 4: Execute via Dashboard
-              console.log('[PIN] Step 4: Calling /api/private-send/execute...');
-              const executeResult = await executePrivateSend({
-                signedTx,
-                encryptionSignature,
-                source: privateSendAction.source,
-                senderPublicKey: derivedAddress,
-                recipientAddress: privateSendAction.recipientAddress,
-                amount: privateSendAction.amount,
-              });
-              
-              if (!executeResult.success) {
-                console.log('[PIN] Execute failed:', executeResult.error);
-                if (Platform.OS !== "web") {
-                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                }
-                setPin("");
-                setIsProcessing(false);
-                setTxErrorMessage(executeResult.error || "Private send failed");
-                setTxErrorModalVisible(true);
-                return;
-              }
-
-              console.log('[PIN] Private send successful!');
-              console.log('[PIN] Signature:', executeResult.signature);
-              console.log('[PIN] Amount received:', executeResult.amountReceived);
-              console.log('[PIN] === Private Send Flow COMPLETE ===');
+              console.log('[PIN] Wallet verified, navigating to Processing...');
               if (Platform.OS !== "web") {
                 await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
 
-              setSolanaKeypair(keypair);
-              setWalletAddress(derivedAddress);
-
-              console.log('[PIN] Navigating to Success screen...');
-              navigation.reset({
-                index: 0,
-                routes: [{ 
-                  name: 'Success',
-                  params: {
-                    actionType: 'privateSend',
-                    amount: privateSendAction.amount,
-                    amountReceived: executeResult.amountReceived,
-                    signature: executeResult.signature,
-                  }
-                }],
+              navigation.replace('Processing', {
+                actionType: 'privateSend',
+                amount: privateSendAction.amount,
+                source: privateSendAction.source,
+                recipient: privateSendAction.recipientAddress,
+                keypairSecretKey: Array.from(keypair.secretKey),
+                walletAddress: privateSendAction.walletAddress,
               });
               return;
             }
@@ -537,6 +497,8 @@ export default function PINInputScreen() {
                 await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
 
+              logPINAttempt(true, attempts + 1);
+              logWalletDerived();
               navigation.replace("Wallet");
               return;
             }
@@ -573,12 +535,24 @@ export default function PINInputScreen() {
               await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
 
+            logPINAttempt(true, attempts + 1);
+            logWalletDerived();
             navigation.replace("Wallet");
           } catch (error) {
             console.log('[PIN] CATCH ERROR:', error instanceof Error ? error.message : error);
             
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            
+            // Check if we're in a specific flow that needs error modal
+            const isPrivateSendFlow = !!route.params?.privateSendAction;
+            const isSendFlow = !!route.params?.sendAction;
+            const isShieldFlow = !!route.params?.shieldAction;
+            const isPrivacyFlow = !!route.params?.privacyAction;
+            const isActionFlow = isPrivateSendFlow || isShieldFlow || isPrivacyFlow || isSendFlow;
+            
             const newAttempts = attempts + 1;
             setAttempts(newAttempts);
+            logPINAttempt(false, newAttempts);
             
             shakeAnim.value = withSequence(
               withTiming(-10, { duration: 50 }),
@@ -601,6 +575,12 @@ export default function PINInputScreen() {
             const lockoutDelay = LOCKOUT_DELAYS[newAttempts] || 0;
             if (lockoutDelay > 0) {
               startLockout(lockoutDelay);
+            }
+            
+            // Show error modal for action flows with actual error message
+            if (isActionFlow) {
+              setTxErrorMessage(errorMessage || "Transaction failed. Please try again.");
+              setTxErrorModalVisible(true);
             }
           }
         }, 500);
@@ -730,54 +710,42 @@ export default function PINInputScreen() {
         </View>
       </View>
 
-      <Modal
+      <CyberpunkErrorModal
         visible={txErrorModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setTxErrorModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Transaction Failed</Text>
-            <Text style={styles.modalMessage}>
-              {txErrorMessage.length > 100 
-                ? txErrorMessage.substring(0, 100) + "..." 
-                : txErrorMessage}
-            </Text>
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={styles.modalButtonCancel}
-                onPress={() => {
-                  setTxErrorModalVisible(false);
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Wallet' }],
-                  });
-                }}
-                testID="button-tx-error-cancel"
-              >
-                <Text style={styles.modalButtonCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={styles.modalButtonRetry}
-                onPress={() => {
-                  setTxErrorModalVisible(false);
-                  const shieldAction = route.params?.shieldAction;
-                  if (shieldAction) {
-                    navigation.replace("NFCReader", {
-                      sessionId: route.params.sessionId,
-                      shieldAction: shieldAction,
-                    });
-                  }
-                }}
-                testID="button-tx-error-retry"
-              >
-                <Text style={styles.modalButtonRetryText}>Retry</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        title="TRANSACTION FAILED"
+        message={txErrorMessage}
+        onCancel={() => {
+          setTxErrorModalVisible(false);
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Wallet' }],
+          });
+        }}
+        onRetry={() => {
+          setTxErrorModalVisible(false);
+          const shieldAction = route.params?.shieldAction;
+          if (shieldAction) {
+            navigation.replace("NFCReader", {
+              sessionId: route.params.sessionId,
+              shieldAction: shieldAction,
+            });
+          }
+        }}
+      />
+
+      <CyberpunkErrorModal
+        visible={pinErrorModalVisible}
+        title="VERIFICATION FAILED"
+        message={pinErrorMessage}
+        onCancel={() => {
+          setPinErrorModalVisible(false);
+          navigation.goBack();
+        }}
+        onRetry={() => {
+          setPinErrorModalVisible(false);
+          setPin("");
+        }}
+      />
     </View>
   );
 }
@@ -894,68 +862,6 @@ const styles = StyleSheet.create({
   resetButtonText: {
     fontFamily: Fonts.body,
     fontSize: 16,
-    color: "#0A0A0A",
-    fontWeight: "600",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: Spacing.xl,
-  },
-  modalContainer: {
-    backgroundColor: "#1A1A1A",
-    borderRadius: 16,
-    padding: Spacing["2xl"],
-    width: "100%",
-    maxWidth: 340,
-    borderWidth: 1,
-    borderColor: "#333",
-  },
-  modalTitle: {
-    fontFamily: Fonts.astroSpace,
-    fontSize: 18,
-    color: "#FF6B6B",
-    textAlign: "center",
-    marginBottom: Spacing.md,
-  },
-  modalMessage: {
-    fontFamily: Fonts.body,
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.7)",
-    textAlign: "center",
-    marginBottom: Spacing["2xl"],
-    lineHeight: 20,
-  },
-  modalButtons: {
-    flexDirection: "row",
-    gap: Spacing.md,
-  },
-  modalButtonCancel: {
-    flex: 1,
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "#555",
-    paddingVertical: Spacing.md,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  modalButtonCancelText: {
-    fontFamily: Fonts.body,
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.7)",
-  },
-  modalButtonRetry: {
-    flex: 1,
-    backgroundColor: Colors.dark.text,
-    paddingVertical: Spacing.md,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  modalButtonRetryText: {
-    fontFamily: Fonts.body,
-    fontSize: 14,
     color: "#0A0A0A",
     fontWeight: "600",
   },

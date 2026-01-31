@@ -79,6 +79,7 @@ export default function SuccessScreen() {
       case 'shield': return 'FUND SHIELDED';
       case 'unshield': return 'FUND UNSHIELDED';
       case 'privateSend': return 'SENT PRIVATELY';
+      case 'send': return 'SOL SENT';
       default: return 'TRANSACTION COMPLETE';
     }
   };
@@ -88,6 +89,7 @@ export default function SuccessScreen() {
       case 'shield': return 'Successfully shielded';
       case 'unshield': return 'Successfully unshielded';
       case 'privateSend': return 'Sent via Privacy Cash';
+      case 'send': return 'Transfer complete';
       default: return 'Transaction completed';
     }
   };
@@ -101,52 +103,56 @@ export default function SuccessScreen() {
       style={styles.container}
       resizeMode="cover"
     >
-      <ScreenHeader rightText="Success" />
+      <Animated.View style={[styles.logoOverlay, iconStyle]}>
+        <GriplockLogoGreen />
+      </Animated.View>
       
-      <View style={styles.content}>
-        <Animated.View style={[styles.headerSection, textStyle]}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
-          
-          {actionType === 'privateSend' && amount !== undefined ? (
-            <View style={styles.amountContainer}>
-              <Text style={styles.amountLabel}>Sent</Text>
+      <View style={styles.foreground}>
+        <ScreenHeader rightText="Success" />
+        
+        <View style={styles.content}>
+          <Animated.View style={[styles.headerSection, textStyle]}>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.subtitle}>{subtitle}</Text>
+            
+            {(actionType === 'privateSend' || actionType === 'send') && amount !== undefined ? (
+              <View style={styles.amountContainer}>
+                <Text style={styles.amountLabel}>Sent</Text>
+                <Text style={styles.amountValue}>{amount} SOL</Text>
+                {amountReceived !== undefined ? (
+                  <>
+                    <Text style={styles.receivedLabel}>Recipient receives</Text>
+                    <Text style={styles.receivedValue}>{amountReceived.toFixed(4)} SOL</Text>
+                  </>
+                ) : null}
+              </View>
+            ) : amount !== undefined ? (
               <Text style={styles.amountValue}>{amount} SOL</Text>
-              {amountReceived !== undefined ? (
-                <>
-                  <Text style={styles.receivedLabel}>Recipient receives</Text>
-                  <Text style={styles.receivedValue}>{amountReceived.toFixed(4)} SOL</Text>
-                </>
-              ) : null}
-            </View>
-          ) : amount !== undefined ? (
-            <Text style={styles.amountValue}>{amount} SOL</Text>
-          ) : null}
-        </Animated.View>
-        
-        <Animated.View style={[styles.logoContainer, iconStyle]}>
-          <GriplockLogoGreen />
-        </Animated.View>
-        
-        <Animated.View style={[styles.bottomSection, { paddingBottom: insets.bottom + Spacing["2xl"] }, textStyle]}>
-          {signature ? (
-            <View style={styles.txContainer}>
-              <Text style={styles.txLabel}>Transaction ID</Text>
-              <CyberpunkInput
-                value={signature}
-                truncate={true}
+            ) : null}
+          </Animated.View>
+          
+          <View style={styles.spacer} />
+          
+          <Animated.View style={[styles.bottomSection, { paddingBottom: insets.bottom + Spacing["2xl"] }, textStyle]}>
+            {signature ? (
+              <View style={styles.txContainer}>
+                <Text style={styles.txLabel}>Transaction ID</Text>
+                <CyberpunkInput
+                  value={signature}
+                  truncate={true}
+                />
+              </View>
+            ) : null}
+            
+            <View style={styles.buttonContainer}>
+              <CyberpunkButton
+                title="Back home"
+                onPress={handleContinue}
+                width={180}
               />
             </View>
-          ) : null}
-          
-          <View style={styles.buttonContainer}>
-            <CyberpunkButton
-              title="Back home"
-              onPress={handleContinue}
-              width={180}
-            />
-          </View>
-        </Animated.View>
+          </Animated.View>
+        </View>
       </View>
     </ImageBackground>
   );
@@ -157,6 +163,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.dark.backgroundRoot,
   },
+  logoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 0,
+  },
+  foreground: {
+    flex: 1,
+    zIndex: 1,
+  },
   content: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
@@ -164,6 +184,9 @@ const styles = StyleSheet.create({
   headerSection: {
     alignItems: "center",
     marginTop: Spacing["2xl"],
+  },
+  spacer: {
+    flex: 1,
   },
   title: {
     fontFamily: Fonts.astroSpace,
@@ -204,11 +227,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.circular.bold,
     fontSize: 22,
     color: "#4ADE80",
-  },
-  logoContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
   },
   bottomSection: {
     alignItems: "center",

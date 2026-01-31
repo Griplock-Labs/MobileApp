@@ -28,9 +28,9 @@ export function ASCIILoader({
   }, []);
 
   const fontSize = {
-    small: 10,
-    medium: 14,
-    large: 20,
+    small: 24,
+    medium: 40,
+    large: 64,
   }[size];
 
   return (

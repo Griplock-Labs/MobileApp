@@ -22,66 +22,48 @@ import ScreenHeader from "@/components/ScreenHeader";
 import CyberpunkButton from "@/components/CyberpunkButton";
 import { Spacing, Fonts } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
-import { getCompressedBalance } from "@/lib/private-shield";
 import { getBalance } from "@/lib/solana-rpc";
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, "PrivateSend">;
-type RouteProps = RouteProp<RootStackParamList, "PrivateSend">;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, "Send">;
+type RouteProps = RouteProp<RootStackParamList, "Send">;
 
-type SourceType = "public" | "shielded";
-
-export default function PrivateSendScreen() {
+export default function SendScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RouteProps>();
   const { walletAddress } = route.params;
 
-  const [source, setSource] = useState<SourceType>("public");
   const [recipientAddress, setRecipientAddress] = useState("");
   const [amount, setAmount] = useState("");
-  const [publicBalance, setPublicBalance] = useState(0);
-  const [shieldedBalance, setShieldedBalance] = useState(0);
+  const [balance, setBalance] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [inputWidth, setInputWidth] = useState(354);
   const inputHeight = 50;
 
-  const selectedBalance = source === "public" ? publicBalance : shieldedBalance;
-  const estimatedFee = source === "public" ? 0.008 : 0.012;
+  const estimatedFee = 0.000005;
 
   useEffect(() => {
-    fetchBalances();
+    fetchBalance();
   }, []);
 
-  const fetchBalances = async () => {
+  const fetchBalance = async () => {
     try {
       const pubkey = new PublicKey(walletAddress);
-      const [publicBal, compressedBal] = await Promise.all([
-        getBalance(pubkey),
-        getCompressedBalance(pubkey),
-      ]);
-      setPublicBalance(publicBal.sol);
-      setShieldedBalance(compressedBal);
+      const balanceData = await getBalance(pubkey);
+      setBalance(balanceData.sol);
     } catch (error) {
-      console.error("Failed to fetch balances:", error);
+      console.error("[Send] Failed to fetch balance:", error);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleSourceChange = async (newSource: SourceType) => {
-    if (Platform.OS !== "web") {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    setSource(newSource);
-    setAmount("");
   };
 
   const handleMaxPress = useCallback(async () => {
     if (Platform.OS !== "web") {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    const maxAmount = Math.max(0, selectedBalance - estimatedFee - 0.001);
-    setAmount(maxAmount.toFixed(4));
-  }, [selectedBalance, estimatedFee]);
+    const maxAmount = Math.max(0, balance - estimatedFee - 0.001);
+    setAmount(maxAmount.toFixed(6));
+  }, [balance, estimatedFee]);
 
   const validateAddress = (address: string): boolean => {
     try {
@@ -93,60 +75,63 @@ export default function PrivateSendScreen() {
   };
 
   const handleContinue = useCallback(async () => {
-    console.log('[PrivateSend] Continue button pressed');
-    console.log('[PrivateSend] Source:', source);
-    console.log('[PrivateSend] Recipient:', recipientAddress);
-    console.log('[PrivateSend] Amount:', amount);
-    console.log('[PrivateSend] Selected Balance:', selectedBalance);
+    console.log('[Send] Continue button pressed');
+    console.log('[Send] Recipient:', recipientAddress);
+    console.log('[Send] Amount:', amount);
+    console.log('[Send] Balance:', balance);
 
     if (Platform.OS !== "web") {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
     if (!validateAddress(recipientAddress)) {
-      console.log('[PrivateSend] Invalid address');
+      console.log('[Send] Invalid address');
       Alert.alert("Invalid Address", "Please enter a valid Solana address");
+      return;
+    }
+
+    if (recipientAddress === walletAddress) {
+      console.log('[Send] Cannot send to self');
+      Alert.alert("Invalid Recipient", "Cannot send to your own wallet");
       return;
     }
 
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      console.log('[PrivateSend] Invalid amount');
+      console.log('[Send] Invalid amount');
       Alert.alert("Invalid Amount", "Please enter a valid amount");
       return;
     }
 
-    if (amountNum > selectedBalance - estimatedFee) {
-      console.log('[PrivateSend] Insufficient balance');
-      Alert.alert("Insufficient Balance", `Amount exceeds available ${source} balance after fees`);
+    if (amountNum > balance - estimatedFee) {
+      console.log('[Send] Insufficient balance');
+      Alert.alert("Insufficient Balance", "Amount exceeds available balance after fees");
       return;
     }
 
-    console.log('[PrivateSend] Validation passed, navigating to NFCReader');
-    console.log('[PrivateSend] privateSendAction:', {
-      source,
+    console.log('[Send] Validation passed, navigating to NFCReader');
+    console.log('[Send] sendAction:', {
       recipientAddress,
       amount: amountNum,
       walletAddress,
     });
 
     navigation.navigate("NFCReader", {
-      sessionId: "private-send-flow",
-      privateSendAction: {
-        source,
+      sessionId: "send-flow",
+      sendAction: {
         recipientAddress,
         amount: amountNum,
         walletAddress,
       },
     });
-  }, [source, amount, selectedBalance, estimatedFee, recipientAddress, walletAddress, navigation]);
+  }, [amount, balance, estimatedFee, recipientAddress, walletAddress, navigation]);
 
   const onInputLayout = (e: LayoutChangeEvent) => {
     setInputWidth(e.nativeEvent.layout.width);
   };
 
   const amountNum = parseFloat(amount) || 0;
-  const isValidAmount = amountNum > 0 && amountNum <= selectedBalance - estimatedFee;
+  const isValidAmount = amountNum > 0 && amountNum <= balance - estimatedFee;
   const isValidAddress = recipientAddress.length > 0 && validateAddress(recipientAddress);
   const canContinue = isValidAmount && isValidAddress;
 
@@ -158,7 +143,7 @@ export default function PrivateSendScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     } catch (error) {
-      console.log('[PrivateSend] Paste failed:', error);
+      console.log('[Send] Paste failed:', error);
     }
   };
 
@@ -172,52 +157,18 @@ export default function PrivateSendScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>SEND PRIVATELY</Text>
+        <Text style={styles.title}>SEND SOL</Text>
         <Text style={styles.subtitle}>
-          Send via Privacy Cash with full anonymity
+          Direct transfer to any Solana address
         </Text>
 
-        <Text style={styles.sectionLabel}>Send from</Text>
-        <View style={styles.sourceSelector}>
-          <Pressable
-            style={[
-              styles.sourceOption,
-              source === "public" && styles.sourceOptionSelected,
-            ]}
-            onPress={() => handleSourceChange("public")}
-          >
-            <View style={styles.radioOuter}>
-              {source === "public" && <View style={styles.radioInner} />}
-            </View>
-            <View style={styles.sourceInfo}>
-              <Text style={styles.sourceLabel}>Public Balance</Text>
-              {isLoading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.sourceBalance}>{publicBalance.toFixed(4)} SOL</Text>
-              )}
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.sourceOption,
-              source === "shielded" && styles.sourceOptionSelected,
-            ]}
-            onPress={() => handleSourceChange("shielded")}
-          >
-            <View style={styles.radioOuter}>
-              {source === "shielded" && <View style={styles.radioInner} />}
-            </View>
-            <View style={styles.sourceInfo}>
-              <Text style={styles.sourceLabel}>Shielded Balance</Text>
-              {isLoading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.sourceBalance}>{shieldedBalance.toFixed(4)} SOL</Text>
-              )}
-            </View>
-          </Pressable>
+        <View style={styles.balanceInfo}>
+          <Text style={styles.balanceLabel}>Available Balance</Text>
+          {isLoading ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <Text style={styles.balanceValue}>{balance.toFixed(6)} SOL</Text>
+          )}
         </View>
 
         <Text style={styles.inputLabel}>Recipient address</Text>
@@ -350,7 +301,7 @@ export default function PrivateSendScreen() {
                 style={styles.textInput}
                 value={amount}
                 onChangeText={setAmount}
-                placeholder="0.0000"
+                placeholder="0.000000"
                 placeholderTextColor="rgba(255, 255, 255, 0.3)"
                 keyboardType="decimal-pad"
               />
@@ -368,16 +319,13 @@ export default function PrivateSendScreen() {
         </View>
 
         <View style={styles.feeInfo}>
-          <Text style={styles.feeLabel}>Estimated fee</Text>
-          <Text style={styles.feeValue}>~{estimatedFee.toFixed(4)} SOL</Text>
+          <Text style={styles.feeLabel}>Network fee</Text>
+          <Text style={styles.feeValue}>~{estimatedFee.toFixed(6)} SOL</Text>
         </View>
 
-        <View style={styles.privacyNote}>
-          <Text style={styles.privacyNoteText}>
-            {source === "public" 
-              ? "Funds deposited to Privacy Cash pool, then withdrawn to recipient. Sender identity hidden via ZK proof."
-              : "Shielded balance decompressed, deposited to Privacy Cash, then withdrawn privately. Full anonymity."
-            }
+        <View style={styles.infoNote}>
+          <Text style={styles.infoNoteText}>
+            This is a direct on-chain transfer. The transaction will be visible on blockchain explorers.
           </Text>
         </View>
 
@@ -422,59 +370,25 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: Spacing.xl,
   },
-  sectionLabel: {
-    fontFamily: Fonts.body,
-    fontSize: 12,
-    color: "rgba(255, 255, 255, 0.5)",
-    marginBottom: Spacing.sm,
-  },
-  sourceSelector: {
-    marginBottom: Spacing.xl,
-  },
-  sourceOption: {
+  balanceInfo: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.md,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.2)",
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xl,
   },
-  sourceOptionSelected: {
-    borderColor: "#FFFFFF",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-  },
-  radioOuter: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: Spacing.md,
-  },
-  radioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#FFFFFF",
-  },
-  sourceInfo: {
-    flex: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  sourceLabel: {
+  balanceLabel: {
     fontFamily: Fonts.body,
     fontSize: 14,
-    color: "#FFFFFF",
-  },
-  sourceBalance: {
-    fontFamily: Fonts.circular.book,
-    fontSize: 14,
     color: "rgba(255, 255, 255, 0.7)",
+  },
+  balanceValue: {
+    fontFamily: Fonts.circular.book,
+    fontSize: 16,
+    color: "#FFFFFF",
   },
   inputLabel: {
     fontFamily: Fonts.body,
@@ -501,21 +415,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     justifyContent: "center",
   },
-  inputAreaWithButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-  },
   textInput: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontFamily: Fonts.circular.book,
-    letterSpacing: 0.5,
-    padding: 0,
-  },
-  textInputWithButton: {
-    flex: 1,
     color: "#FFFFFF",
     fontSize: 14,
     fontFamily: Fonts.circular.book,
@@ -571,12 +471,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "rgba(255, 255, 255, 0.5)",
   },
-  privacyNote: {
+  infoNote: {
     backgroundColor: "rgba(255, 255, 255, 0.05)",
     padding: Spacing.md,
     marginBottom: Spacing.xl,
   },
-  privacyNoteText: {
+  infoNoteText: {
     fontFamily: Fonts.body,
     fontSize: 11,
     color: "rgba(255, 255, 255, 0.6)",
