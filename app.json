@@ -24,7 +24,10 @@
       "package": "com.griplock.app",
       "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.NFC"
+      ]
     },
     "web": {
       "output": "single",
@@ -54,7 +57,9 @@
         "react-native-nfc-manager",
         {
           "nfcReaderUsageDescription": "GRIPLOCK needs NFC access to read your secure card.",
-          "selectIdentifiers": ["A0000000041010"],
+          "selectIdentifiers": [
+            "A0000000041010"
+          ],
           "systemCodes": []
         }
       ],
@@ -64,7 +69,10 @@
       "reactCompiler": false
     },
     "extra": {
-      "HELIUS_RPC_URL": "${EXPO_PUBLIC_HELIUS_RPC_URL}"
+      "HELIUS_RPC_URL": "${EXPO_PUBLIC_HELIUS_RPC_URL}",
+      "eas": {
+        "projectId": "af453638-adee-4bbe-a28e-d5a8da1874c4"
+      }
     }
   }
 }
