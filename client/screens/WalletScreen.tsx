@@ -14,6 +14,7 @@ import { useWebRTC } from "@/context/WebRTCContext";
 import WalletCard from "@/components/WalletCard";
 import BottomNavigation from "@/components/BottomNavigation";
 import CyberpunkModal from "@/components/CyberpunkModal";
+import CyberpunkButton from "@/components/CyberpunkButton";
 import { getBalance } from "@/lib/solana-rpc";
 import { getCompressedBalance } from "@/lib/private-shield";
 import { logEvent } from "@/lib/analytics";
@@ -72,7 +73,7 @@ function CreateWalletButton({ onPress }: { onPress: () => void }) {
         <Path d="M9.5 0.5H0.5V9.5" stroke="white" strokeWidth={1} fill="none" />
         <Path d="M0.5 29.5L0.5 38.5L9.5 38.5" stroke="white" strokeWidth={1} fill="none" />
       </Svg>
-      <Text style={styles.createWalletText}>Tap Another Key</Text>
+      <Text style={styles.createWalletText}>Switch Key</Text>
     </Pressable>
   );
 }
@@ -80,7 +81,7 @@ function CreateWalletButton({ onPress }: { onPress: () => void }) {
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
-  const { walletAddress } = useWebRTC();
+  const { walletAddress, cleanup, sendDisconnect } = useWebRTC();
   const [addMoreModalVisible, setAddMoreModalVisible] = useState(false);
   const [privateInfoModalVisible, setPrivateInfoModalVisible] = useState(false);
   const [balanceErrorModalVisible, setBalanceErrorModalVisible] = useState(false);
@@ -138,7 +139,7 @@ export default function WalletScreen() {
   };
 
   const handleCreateWallet = async () => {
-    logEvent('button_press', { button: 'tap_another_key', screen: 'wallet' });
+    logEvent('button_press', { button: 'switch_key', screen: 'wallet' });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setAddMoreModalVisible(true);
   };
@@ -214,10 +215,32 @@ export default function WalletScreen() {
         onClose={() => setAddMoreModalVisible(false)}
       >
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>COMING SOON</Text>
+          <Text style={styles.modalTitle}>SWITCH KEY</Text>
           <Text style={styles.modalDescription}>
-            This feature is currently being developed{"\n"}and not yet available
+            This will disconnect your current session and allow you to tap a different NFC key.
           </Text>
+          <View style={styles.modalButtons}>
+            <CyberpunkButton
+              title="Cancel"
+              onPress={() => setAddMoreModalVisible(false)}
+              width={120}
+            />
+            <CyberpunkButton
+              title="Switch"
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                logEvent('button_press', { button: 'confirm_switch_key', screen: 'wallet' });
+                setAddMoreModalVisible(false);
+                sendDisconnect();
+                cleanup(false);
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Home' }],
+                });
+              }}
+              width={120}
+            />
+          </View>
         </View>
       </CyberpunkModal>
 
@@ -323,5 +346,10 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 60,
     paddingHorizontal: 20,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    gap: Spacing.lg,
+    marginTop: Spacing["3xl"],
   },
 });

@@ -29,9 +29,15 @@ import Animated, {
 import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
+import { useAuthPreference } from "@/context/AuthPreferenceContext";
 import WalletCard from "@/components/WalletCard";
 import BottomNavigation from "@/components/BottomNavigation";
+import AuthLevelModal, { AuthLevel } from "@/components/AuthLevelModal";
+import SecretSetupModal from "@/components/SecretSetupModal";
 import { logEvent, logQRScanned, logNFCTap } from "@/lib/analytics";
+import { deriveSolanaAddress } from "@/lib/crypto";
+import { checkForUpdates, UpdateInfo } from "@/lib/update-checker";
+import * as Linking from "expo-linking";
 
 let NfcManager: any = null;
 let NfcTech: any = null;
@@ -82,6 +88,70 @@ function GriplockLogo() {
   );
 }
 
+function GearIcon() {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 22 22" fill="none">
+      <Path
+        d="M11 14C12.6569 14 14 12.6569 14 11C14 9.34315 12.6569 8 11 8C9.34315 8 8 9.34315 8 11C8 12.6569 9.34315 14 11 14Z"
+        stroke="#888888"
+        strokeWidth={1.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M17.7273 13.7273C17.6063 14.0015 17.5702 14.3056 17.6236 14.6005C17.6771 14.8954 17.8177 15.1676 18.0273 15.3818L18.0818 15.4364C18.2509 15.6052 18.385 15.8057 18.4765 16.0265C18.568 16.2472 18.6151 16.4838 18.6151 16.7227C18.6151 16.9617 18.568 17.1983 18.4765 17.419C18.385 17.6397 18.2509 17.8402 18.0818 18.0091C17.913 18.1781 17.7124 18.3122 17.4917 18.4037C17.271 18.4952 17.0344 18.5423 16.7955 18.5423C16.5565 18.5423 16.3199 18.4952 16.0992 18.4037C15.8785 18.3122 15.678 18.1781 15.5091 18.0091L15.4545 17.9545C15.2403 17.745 14.9682 17.6044 14.6733 17.5509C14.3784 17.4974 14.0742 17.5335 13.8 17.6545C13.5311 17.7698 13.3018 17.9611 13.1403 18.205C12.9788 18.4489 12.8921 18.7347 12.8909 19.0273V19.1818C12.8909 19.664 12.6994 20.1265 12.3584 20.4675C12.0174 20.8085 11.5549 21 11.0727 21C10.5905 21 10.128 20.8085 9.78705 20.4675C9.44606 20.1265 9.25455 19.664 9.25455 19.1818V19.1C9.24751 18.7991 9.15011 18.5073 8.97501 18.2625C8.79991 18.0176 8.55521 17.8312 8.27273 17.7273C7.99853 17.6063 7.69437 17.5702 7.39947 17.6236C7.10456 17.6771 6.83244 17.8177 6.61818 18.0273L6.56364 18.0818C6.39478 18.2509 6.19425 18.385 5.97353 18.4765C5.7528 18.568 5.51621 18.6151 5.27727 18.6151C5.03834 18.6151 4.80175 18.568 4.58102 18.4765C4.3603 18.385 4.15977 18.2509 3.99091 18.0818C3.82186 17.913 3.68775 17.7124 3.59626 17.4917C3.50476 17.271 3.45766 17.0344 3.45766 16.7955C3.45766 16.5565 3.50476 16.3199 3.59626 16.0992C3.68775 15.8785 3.82186 15.678 3.99091 15.5091L4.04545 15.4545C4.25503 15.2403 4.39562 14.9682 4.4491 14.6733C4.50257 14.3784 4.46647 14.0742 4.34545 13.8C4.23022 13.5311 4.03887 13.3018 3.79497 13.1403C3.55107 12.9788 3.26526 12.8921 2.97273 12.8909H2.81818C2.33597 12.8909 1.87351 12.6994 1.53253 12.3584C1.19156 12.0174 1 11.5549 1 11.0727C1 10.5905 1.19156 10.128 1.53253 9.78705C1.87351 9.44606 2.33597 9.25455 2.81818 9.25455H2.9C3.20089 9.24751 3.49273 9.15011 3.73754 8.97501C3.98236 8.79991 4.16883 8.55521 4.27273 8.27273C4.39374 7.99853 4.42984 7.69437 4.37637 7.39947C4.3229 7.10456 4.18231 6.83244 3.97273 6.61818L3.91818 6.56364C3.74913 6.39478 3.61503 6.19425 3.52353 5.97353C3.43203 5.7528 3.38493 5.51621 3.38493 5.27727C3.38493 5.03834 3.43203 4.80175 3.52353 4.58102C3.61503 4.3603 3.74913 4.15977 3.91818 3.99091C4.08704 3.82186 4.28757 3.68775 4.50829 3.59626C4.72902 3.50476 4.96561 3.45766 5.20455 3.45766C5.44348 3.45766 5.68007 3.50476 5.9008 3.59626C6.12152 3.68775 6.32205 3.82186 6.49091 3.99091L6.54545 4.04545C6.75971 4.25503 7.03183 4.39562 7.32674 4.4491C7.62164 4.50257 7.9258 4.46647 8.2 4.34545H8.27273C8.54161 4.23022 8.77093 4.03887 8.93245 3.79497C9.09397 3.55107 9.18065 3.26526 9.18182 2.97273V2.81818C9.18182 2.33597 9.37338 1.87351 9.71435 1.53253C10.0553 1.19156 10.5178 1 11 1C11.4822 1 11.9447 1.19156 12.2856 1.53253C12.6266 1.87351 12.8182 2.33597 12.8182 2.81818V2.9C12.8193 3.19253 12.906 3.47834 13.0676 3.72224C13.2291 3.96614 13.4584 4.15749 13.7273 4.27273C14.0015 4.39374 14.3056 4.42984 14.6005 4.37637C14.8954 4.3229 15.1676 4.18231 15.3818 3.97273L15.4364 3.91818C15.6052 3.74913 15.8057 3.61503 16.0265 3.52353C16.2472 3.43203 16.4838 3.38493 16.7227 3.38493C16.9617 3.38493 17.1983 3.43203 17.419 3.52353C17.6397 3.61503 17.8402 3.74913 18.0091 3.91818C18.1781 4.08704 18.3122 4.28757 18.4037 4.50829C18.4952 4.72902 18.5423 4.96561 18.5423 5.20455C18.5423 5.44348 18.4952 5.68007 18.4037 5.9008C18.3122 6.12152 18.1781 6.32205 18.0091 6.49091L17.9545 6.54545C17.745 6.75971 17.6044 7.03183 17.5509 7.32674C17.4974 7.62164 17.5335 7.9258 17.6545 8.2V8.27273C17.7698 8.54161 17.9611 8.77093 18.205 8.93245C18.4489 9.09397 18.7347 9.18065 19.0273 9.18182H19.1818C19.664 9.18182 20.1265 9.37338 20.4675 9.71435C20.8085 10.0553 21 10.5178 21 11C21 11.4822 20.8085 11.9447 20.4675 12.2856C20.1265 12.6266 19.664 12.8182 19.1818 12.8182H19.1C18.8075 12.8193 18.5217 12.906 18.2778 13.0676C18.0339 13.2291 17.8425 13.4584 17.7273 13.7273Z"
+        stroke="#888888"
+        strokeWidth={1.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function AuthLevelBadge({ level }: { level: AuthLevel | null }) {
+  if (!level) return null;
+  
+  const labels: Record<AuthLevel, string> = {
+    nfc_pin: "NFC+PIN",
+    nfc_secret: "NFC+SECRET",
+    nfc_pin_secret: "TRIPLE",
+  };
+  
+  const isTriple = level === "nfc_pin_secret";
+  
+  return (
+    <View style={[authBadgeStyles.badge, isTriple && authBadgeStyles.badgeTriple]}>
+      <Text style={[authBadgeStyles.text, isTriple && authBadgeStyles.textTriple]}>
+        {labels[level]}
+      </Text>
+    </View>
+  );
+}
+
+const authBadgeStyles = StyleSheet.create({
+  badge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "#444444",
+    backgroundColor: "rgba(40, 40, 40, 0.8)",
+  },
+  badgeTriple: {
+    borderColor: Colors.dark.primary,
+    backgroundColor: "rgba(0, 204, 204, 0.1)",
+  },
+  text: {
+    fontFamily: Fonts.circular.medium,
+    fontSize: 9,
+    color: "#888888",
+    letterSpacing: 0.5,
+  },
+  textTriple: {
+    color: Colors.dark.primary,
+  },
+});
+
 function PhoneIllustration() {
   return (
     <Svg width={255} height={157} viewBox="0 0 255 157" fill="none">
@@ -130,6 +200,7 @@ export default function HomeScreen() {
 
   const webrtc = useWebRTC();
   const walletAddress = webrtc?.walletAddress;
+  const setWalletAddress = webrtc?.setWalletAddress;
   const connectionStatus = webrtc?.status ?? "disconnected";
   const dashboardDisconnect = webrtc?.dashboardDisconnect;
   const peerDisconnect = webrtc?.peerDisconnect;
@@ -147,9 +218,29 @@ export default function HomeScreen() {
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [nfcDetected, setNfcDetected] = useState(false);
   const [nfcCardId, setNfcCardId] = useState<string | null>(null);
+  const [showAuthSettingsModal, setShowAuthSettingsModal] = useState(false);
+  const [showSecretModal, setShowSecretModal] = useState(false);
+  const [nfcEnabled, setNfcEnabled] = useState<boolean | null>(null);
+  const [nfcNeedsRestart, setNfcNeedsRestart] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const nfcScanningRef = useRef(false);
+  const nfcWasDisabledRef = useRef(false);
+  
+  const { authLevel, setAuthLevel, setSecret, requiresSecret, hasSecret, getSecret } = useAuthPreference();
   const nfcRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const cleanupRef = useRef(cleanup);
+  
+  // Use ref to always have latest authLevel value (avoids stale closure issue)
+  const authLevelRef = useRef(authLevel);
+  useEffect(() => {
+    authLevelRef.current = authLevel;
+  }, [authLevel]);
+  
+  useEffect(() => {
+    const currentVersion = Constants.expoConfig?.version || '1.0.0';
+    checkForUpdates(currentVersion).then(setUpdateInfo);
+  }, []);
+  
   const cleanupCalledRef = useRef(false);
   cleanupRef.current = cleanup;
 
@@ -220,11 +311,30 @@ export default function HomeScreen() {
         nfcScanningRef.current = false;
         
         const localSessionId = `local_${Date.now()}`;
-        console.log('[HomeScreen NFC] Navigating to PIN screen with session:', localSessionId);
-        navigation.navigate("PINInput", {
-          sessionId: localSessionId,
-          nfcData: nfcDataString,
-        });
+        
+        // Check auth level - nfc_secret skips PIN and derives directly with secret
+        // Use ref to get latest auth level (avoids stale closure)
+        const currentAuthLevel = authLevelRef.current;
+        console.log('[HomeScreen NFC] Current auth level:', currentAuthLevel);
+        if (currentAuthLevel === "nfc_secret") {
+          console.log('[HomeScreen NFC] Auth level is nfc_secret, navigating to DeriveWallet');
+          const secret = await getSecret();
+          if (secret) {
+            navigation.navigate("DeriveWallet", { nfcData: nfcDataString });
+          } else {
+            console.log('[HomeScreen NFC] No secret found, falling back to PIN screen');
+            navigation.navigate("PINInput", {
+              sessionId: localSessionId,
+              nfcData: nfcDataString,
+            });
+          }
+        } else {
+          console.log('[HomeScreen NFC] Navigating to PIN screen with session:', localSessionId);
+          navigation.navigate("PINInput", {
+            sessionId: localSessionId,
+            nfcData: nfcDataString,
+          });
+        }
       }
     } catch (e: any) {
       nfcScanningRef.current = false;
@@ -251,6 +361,48 @@ export default function HomeScreen() {
       nfcScanningRef.current = false;
     };
   }, [shouldShowConnectedUI, startNfcScan, cleanupNfc]);
+
+  // NFC status polling - check every 3 seconds
+  useEffect(() => {
+    if (Platform.OS === "web" || !NfcManager) {
+      setNfcEnabled(null);
+      return;
+    }
+
+    const checkNfcStatus = async () => {
+      try {
+        const supported = await NfcManager.isSupported();
+        if (!supported) {
+          setNfcEnabled(false);
+          return;
+        }
+        const enabled = await NfcManager.isEnabled();
+        
+        // Track if NFC was ever disabled during this session
+        if (!enabled) {
+          nfcWasDisabledRef.current = true;
+        }
+        
+        // If NFC was disabled and now enabled, suggest restart
+        if (enabled && nfcWasDisabledRef.current && nfcEnabled === false) {
+          setNfcNeedsRestart(true);
+        }
+        
+        setNfcEnabled(enabled);
+      } catch (error) {
+        console.log('[HomeScreen] NFC status check error:', error);
+        setNfcEnabled(false);
+      }
+    };
+
+    // Initial check
+    checkNfcStatus();
+
+    // Poll every 3 seconds
+    const interval = setInterval(checkNfcStatus, 3000);
+
+    return () => clearInterval(interval);
+  }, [nfcEnabled]);
 
   useEffect(() => {
     if (isPeerDisconnected && walletAddress && !cleanupCalledRef.current) {
@@ -487,7 +639,23 @@ export default function HomeScreen() {
         ]}
       >
         <View style={styles.header}>
-          <GriplockLogo />
+          <View style={styles.headerRow}>
+            <View style={styles.headerSpacer} />
+            <View style={styles.logoContainer}>
+              <GriplockLogo />
+              <AuthLevelBadge level={authLevel} />
+            </View>
+            <Pressable 
+              style={styles.gearButton} 
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                navigation.navigate("Settings");
+              }}
+              testID="button-settings"
+            >
+              <GearIcon />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.centerContent}>
@@ -509,9 +677,37 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View style={styles.versionContainer}>
-          <Text style={styles.versionText}>GRIPLOCK v{Constants.expoConfig?.version || '1.0.0'}</Text>
-        </View>
+        {/* NFC Status Indicator */}
+        {Platform.OS !== "web" && nfcEnabled !== null && (
+          <View style={styles.nfcStatusContainer}>
+            <View style={[
+              styles.nfcStatusDot,
+              nfcEnabled && !nfcNeedsRestart ? styles.nfcStatusDotActive : styles.nfcStatusDotInactive
+            ]} />
+            <Text style={[
+              styles.nfcStatusText,
+              nfcEnabled && !nfcNeedsRestart ? styles.nfcStatusTextActive : styles.nfcStatusTextInactive
+            ]}>
+              {nfcNeedsRestart ? "RESTART APP" : nfcEnabled ? "NFC READY" : "NFC OFF"}
+            </Text>
+          </View>
+        )}
+
+        <Pressable 
+          style={styles.versionContainer}
+          onPress={() => {
+            if (updateInfo?.hasUpdate) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              Linking.openURL('https://app.griplock.io/');
+            }
+          }}
+        >
+          {updateInfo?.hasUpdate ? (
+            <Text style={styles.updateAvailableText}>UPDATE AVAILABLE</Text>
+          ) : (
+            <Text style={styles.versionText}>GRIPLOCK v{Constants.expoConfig?.version || '1.0.0'}</Text>
+          )}
+        </Pressable>
 
         <BottomNavigation
           activeTab="grid"
@@ -520,6 +716,30 @@ export default function HomeScreen() {
           centerButtonTestID="button-scan-qr"
         />
       </View>
+
+      <AuthLevelModal
+        visible={showAuthSettingsModal}
+        onClose={() => setShowAuthSettingsModal(false)}
+        onSelect={async (level: AuthLevel) => {
+          await setAuthLevel(level);
+          setShowAuthSettingsModal(false);
+          // Only show secret modal if switching to secret mode AND no secret exists yet
+          if ((level === "nfc_secret" || level === "nfc_pin_secret") && !hasSecret) {
+            setShowSecretModal(true);
+          }
+        }}
+        currentLevel={authLevel || undefined}
+        isFirstTime={false}
+      />
+      <SecretSetupModal
+        visible={showSecretModal}
+        onClose={() => setShowSecretModal(false)}
+        onConfirm={async (secret: string) => {
+          await setSecret(secret);
+          setShowSecretModal(false);
+        }}
+        isUpdate={hasSecret}
+      />
     </View>
   );
 }
@@ -545,6 +765,55 @@ const styles = StyleSheet.create({
   header: {
     alignItems: "center",
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    width: "100%",
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  logoContainer: {
+    flex: 1,
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  gearButton: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  nfcStatusContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.xs,
+    gap: 6,
+  },
+  nfcStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  nfcStatusDotActive: {
+    backgroundColor: "#FFFFFF",
+  },
+  nfcStatusDotInactive: {
+    backgroundColor: "#555555",
+  },
+  nfcStatusText: {
+    fontFamily: Fonts.astroSpace,
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  nfcStatusTextActive: {
+    color: "rgba(255, 255, 255, 0.5)",
+  },
+  nfcStatusTextInactive: {
+    color: "#555555",
+  },
   versionContainer: {
     alignItems: "center",
     marginBottom: Spacing.md,
@@ -554,6 +823,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "rgba(255, 255, 255, 0.35)",
     letterSpacing: 1,
+  },
+  updateAvailableText: {
+    fontFamily: Fonts.circular.bold,
+    fontSize: 11,
+    color: "#FFFFFF",
+    letterSpacing: 1,
+    textDecorationLine: "underline",
   },
   title: {
     fontFamily: Fonts.circular.black,

@@ -21,6 +21,8 @@ import PrivateSendProcessScreen from "@/screens/PrivateSendProcessScreen";
 import ShieldProcessScreen from "@/screens/ShieldProcessScreen";
 import ProcessingScreen from "@/screens/ProcessingScreen";
 import SuccessScreen from "@/screens/SuccessScreen";
+import SettingsScreen from "@/screens/SettingsScreen";
+import DeriveWalletScreen from "@/screens/DeriveWalletScreen";
 
 export type CardActionParams = {
   actionId: string;
@@ -102,7 +104,9 @@ export type RootStackParamList = {
     unsignedTx?: string;
     walletAddress: string;
   };
-  Success: { actionType?: 'shield' | 'unshield' | 'privateSend' | 'send'; amount?: number; amountReceived?: number; signature?: string };
+  Success: { actionType?: 'shield' | 'unshield' | 'privateSend' | 'privateReceive' | 'send'; amount?: number; amountReceived?: number; signature?: string };
+  Settings: undefined;
+  DeriveWallet: { nfcData: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -220,6 +224,16 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="Success"
         component={SuccessScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="DeriveWallet"
+        component={DeriveWalletScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

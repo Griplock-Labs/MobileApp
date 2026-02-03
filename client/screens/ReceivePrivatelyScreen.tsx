@@ -61,10 +61,13 @@ export default function ReceivePrivatelyScreen() {
       try {
         const file = getStorageFile(walletAddress);
         if (file.exists) {
-          const content = file.text();
-          setAddressIndex(parseInt(content, 10));
+          const content = await file.text();
+          const parsed = parseInt(content, 10);
+          setAddressIndex(isNaN(parsed) ? 0 : parsed);
+          console.log('[ReceivePrivately] Loaded address index:', parsed);
         } else {
           setAddressIndex(0);
+          console.log('[ReceivePrivately] No saved index, starting at 0');
         }
       } catch (error) {
         console.error("Failed to load address index:", error);
@@ -76,10 +79,11 @@ export default function ReceivePrivatelyScreen() {
 
   useEffect(() => {
     const saveAddressIndex = async () => {
-      if (!walletAddress || addressIndex === null) return;
+      if (!walletAddress || addressIndex === null || addressIndex === 0) return;
       try {
         const file = getStorageFile(walletAddress);
-        file.write(addressIndex.toString());
+        await file.write(addressIndex.toString());
+        console.log('[ReceivePrivately] Saved address index:', addressIndex);
       } catch (error) {
         console.error("Failed to save address index:", error);
       }
@@ -111,12 +115,34 @@ export default function ReceivePrivatelyScreen() {
 
       if (result.success) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert(
-          "Shielded!",
-          `${balanceAmount.toFixed(4)} SOL is now private. Use Unshield to withdraw.`
-        );
         setBalance(0);
-        setAddressIndex(prev => (prev ?? 0) + 1);
+        
+        const currentIndex = addressIndex !== null && !isNaN(addressIndex) ? addressIndex : 0;
+        const newIndex = currentIndex + 1;
+        if (walletAddress) {
+          try {
+            const file = getStorageFile(walletAddress);
+            await file.write(newIndex.toString());
+            console.log('[ReceivePrivately] Saved new address index:', newIndex);
+          } catch (e) {
+            console.error('[ReceivePrivately] Failed to save index:', e);
+          }
+        }
+        
+        navigation.reset({
+          index: 0,
+          routes: [
+            { name: "Wallet" },
+            { 
+              name: "Success", 
+              params: { 
+                actionType: "privateReceive", 
+                amount: balanceAmount,
+                signature: result.signature 
+              } 
+            }
+          ],
+        });
       } else {
         throw new Error(result.error || "Shield failed");
       }

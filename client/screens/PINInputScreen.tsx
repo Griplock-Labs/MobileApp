@@ -18,6 +18,7 @@ import Animated, {
 import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
+import { useAuthPreference } from "@/context/AuthPreferenceContext";
 import { deriveSolanaAddress, deriveSolanaKeypair } from "@/lib/crypto";
 import ScreenHeader from "@/components/ScreenHeader";
 import CyberpunkErrorModal from "@/components/CyberpunkErrorModal";
@@ -145,6 +146,7 @@ export default function PINInputScreen() {
   const [pinErrorMessage, setPinErrorMessage] = useState("");
   const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { sendWalletAddress, setWalletAddress, setSolanaKeypair, status: connectionStatus, cleanup, notifyAttemptUpdate, walletAddress: connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction, clearPendingPrivacyAction, sendPrivacyActionResponse } = useWebRTC();
+  const { getSecret, requiresSecret } = useAuthPreference();
   
   const shakeAnim = useSharedValue(0);
   const scaleAnim = useSharedValue(1);
@@ -187,8 +189,9 @@ export default function PINInputScreen() {
     ],
   }));
 
-  const deriveWalletAddress = (nfcData: string, pinCode: string): string => {
-    return deriveSolanaAddress(nfcData, pinCode);
+  const deriveWalletAddress = async (nfcData: string, pinCode: string): Promise<string> => {
+    const secret = requiresSecret ? await getSecret() : undefined;
+    return deriveSolanaAddress(nfcData, pinCode, secret || undefined);
   };
 
   const handleSessionReset = useCallback(() => {
@@ -249,7 +252,8 @@ export default function PINInputScreen() {
               }
 
               console.log('[PIN] Deriving wallet address for card action...');
-              const derivedAddress = deriveSolanaAddress(route.params.nfcData, newPin);
+              const secret = requiresSecret ? await getSecret() : undefined;
+              const derivedAddress = deriveSolanaAddress(route.params.nfcData, newPin, secret || undefined);
               console.log('[PIN] Derived address:', derivedAddress);
               console.log('[PIN] Connected wallet:', connectedWalletAddress);
 
@@ -310,7 +314,8 @@ export default function PINInputScreen() {
               }
 
               console.log('[PIN] Deriving wallet address for privacy action...');
-              const derivedAddress = deriveSolanaAddress(route.params.nfcData, newPin);
+              const secret = requiresSecret ? await getSecret() : undefined;
+              const derivedAddress = deriveSolanaAddress(route.params.nfcData, newPin, secret || undefined);
               console.log('[PIN] Derived address:', derivedAddress);
               console.log('[PIN] Expected wallet:', privacyAction.walletAddress);
 
@@ -360,7 +365,8 @@ export default function PINInputScreen() {
               const shieldAction = route.params.shieldAction;
 
               console.log('[PIN] Deriving wallet keypair for shield action...');
-              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
+              const shieldSecret = requiresSecret ? await getSecret() : undefined;
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin, shieldSecret || undefined);
               const derivedAddress = keypair.publicKey.toBase58();
               console.log('[PIN] Derived address:', derivedAddress);
               console.log('[PIN] Expected wallet:', shieldAction.walletAddress);
@@ -401,7 +407,8 @@ export default function PINInputScreen() {
               const sendAction = route.params.sendAction;
 
               console.log('[PIN] Deriving wallet keypair...');
-              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
+              const sendSecret = requiresSecret ? await getSecret() : undefined;
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin, sendSecret || undefined);
               const derivedAddress = keypair.publicKey.toBase58();
               console.log('[PIN] Derived address:', derivedAddress);
               console.log('[PIN] Expected wallet:', sendAction.walletAddress);
@@ -441,7 +448,8 @@ export default function PINInputScreen() {
               const privateSendAction = route.params.privateSendAction;
 
               console.log('[PIN] Deriving wallet keypair...');
-              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
+              const privateSendSecret = requiresSecret ? await getSecret() : undefined;
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin, privateSendSecret || undefined);
               const derivedAddress = keypair.publicKey.toBase58();
               console.log('[PIN] Derived address:', derivedAddress);
               console.log('[PIN] Expected wallet:', privateSendAction.walletAddress);
@@ -483,7 +491,8 @@ export default function PINInputScreen() {
               console.log('[PIN] Local session flow detected');
               
               console.log('[PIN] Deriving wallet keypair...');
-              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
+              const localSecret = requiresSecret ? await getSecret() : undefined;
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin, localSecret || undefined);
               const walletAddress = keypair.publicKey.toBase58();
               console.log('[PIN] Wallet derived:', walletAddress);
 
@@ -512,7 +521,8 @@ export default function PINInputScreen() {
             }
 
             console.log('[PIN] Deriving wallet keypair...');
-            const keypair = deriveSolanaKeypair(route.params.nfcData, newPin);
+            const dashboardSecret = requiresSecret ? await getSecret() : undefined;
+            const keypair = deriveSolanaKeypair(route.params.nfcData, newPin, dashboardSecret || undefined);
             const walletAddress = keypair.publicKey.toBase58();
             console.log('[PIN] Wallet derived:', walletAddress);
 

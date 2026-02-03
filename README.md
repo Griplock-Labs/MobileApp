@@ -2,46 +2,70 @@
 
 Mobile companion app for the GRIPLOCK ephemeral crypto wallet system.
 
-## Overview
+## What is GRIPLOCK?
 
-GRIPLOCK is a fully decentralized ephemeral crypto wallet system. Users scan QR codes from the GRIPLOCK dashboard, tap their NFC card, and enter a PIN to derive a wallet address cryptographically. The wallet exists only in memory during the active session.
+GRIPLOCK is a privacy and control layer for crypto wallets, enforced through NFC-based physical intent. It reduces unwanted exposure from public wallet interactions by making access, usage, and balance availability dependent on deliberate human action — not persistent software state.
+
+**Funds always remain on-chain. GRIPLOCK changes how and when a wallet becomes usable.**
+
+For complete documentation, visit: **[docs.griplock.io](https://docs.griplock.io/overview/what-is-griplock)**
+
+## Core Concepts
+
+### Physical Intent as a Security Primitive
+To activate a wallet session, a user must:
+- Be physically present
+- Tap an NFC card
+- Confirm access locally (PIN)
+
+This removes reliance on always-on private keys, background signers, or remote triggers.
+
+### Ephemeral Wallet Sessions
+Keys are derived locally when needed and discarded after use. There is no persistent wallet state — no background wallet, no silent signer, no long-lived session. A wallet session exists only for the duration of user intent.
 
 ## Features
 
-- QR code scanning from GRIPLOCK dashboard
-- NFC card reading (requires physical hardware)
-- 6-digit PIN entry with attempt limiting
-- End-to-end encrypted communication (X25519 + AES-GCM)
-- Cryptographic wallet derivation (SHA256)
-- Dark cyberpunk aesthetic
+- NFC + PIN wallet derivation (ephemeral by design)
+- Shield/Unshield SOL (public ↔ private balance)
+- Private Send via stealth addresses
+- Real-time balance display (public & shielded)
+- Dark cyberpunk aesthetic with ASCII loaders
+- Automatic update notifications
 
 ## Tech Stack
 
 - React Native + Expo
 - React Navigation 7+
 - @noble/curves, @noble/ciphers, @noble/hashes for cryptography
-- WebSocket for real-time communication
+- Light Protocol for ZK compression
+- WebSocket relay for dashboard pairing
 
 ## Security
 
-- No persistent wallet storage (ephemeral by design)
+- No persistent wallet storage
 - Max 5 PIN attempts per session
-- Exponential backoff lockout after failed attempts
-- Fully client-side - no backend stores sensitive data
-
-## How It Works
-
-1. Scan QR code from dashboard (contains WebSocket URL)
-2. Tap GRIPLOCK NFC card
-3. Enter 6-digit PIN
-4. Wallet derived locally: `PBKDF2(pin, salt=griplock_{nfc_id}, iterations=100000)`
-5. Wallet address sent encrypted to dashboard
+- Exponential backoff lockout
+- PBKDF2 with 100k iterations for key derivation
+- End-to-end encrypted communication (X25519 + AES-GCM)
 
 ## Requirements
 
 - Android device with NFC support
 - Physical GRIPLOCK NFC card
-- Connection to GRIPLOCK dashboard
+- GRIPLOCK dashboard connection (for paired operations)
+
+## Download
+
+Get the latest APK at: **[app.griplock.io](https://app.griplock.io/)**
+
+## Documentation
+
+- [What is GRIPLOCK](https://docs.griplock.io/overview/what-is-griplock)
+- [Design Principles](https://docs.griplock.io/overview/design-principles)
+- [Physical Intent](https://docs.griplock.io/how-it-works/physical-intent)
+- [Wallet Session Lifecycle](https://docs.griplock.io/how-it-works/wallet-session-lifecycle)
+- [Shielded Interaction Flow](https://docs.griplock.io/how-it-works/shielded-interaction-flow)
+- [Key Derivation](https://docs.griplock.io/security/key-derivation)
 
 ## License
 

@@ -144,17 +144,21 @@ export function normalizeNfcTagId(tagId: string): string {
   return tagId.replace(/[^a-fA-F0-9]/g, '').toLowerCase();
 }
 
-export function deriveSolanaAddress(nfcData: string, pin: string): string {
+export function deriveSolanaAddress(nfcData: string, pin?: string, secret?: string): string {
   const normalizedNfc = normalizeNfcTagId(nfcData);
-  const data = `${pin}_griplock_${normalizedNfc}`;
+  const pinPart = pin || '';
+  const secretPart = secret ? `_${secret}` : '';
+  const data = `${pinPart}_griplock_${normalizedNfc}${secretPart}`;
   const seed = sha256(new TextEncoder().encode(data));
   const keypair = Keypair.fromSeed(seed);
   return keypair.publicKey.toBase58();
 }
 
-export function deriveSolanaKeypair(nfcData: string, pin: string): Keypair {
+export function deriveSolanaKeypair(nfcData: string, pin?: string, secret?: string): Keypair {
   const normalizedNfc = normalizeNfcTagId(nfcData);
-  const data = `${pin}_griplock_${normalizedNfc}`;
+  const pinPart = pin || '';
+  const secretPart = secret ? `_${secret}` : '';
+  const data = `${pinPart}_griplock_${normalizedNfc}${secretPart}`;
   const seed = sha256(new TextEncoder().encode(data));
   return Keypair.fromSeed(seed);
 }

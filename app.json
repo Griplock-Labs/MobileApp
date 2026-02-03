@@ -2,7 +2,7 @@
   "expo": {
     "name": "GRIPLOCK",
     "slug": "griplock",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "griplock",
@@ -24,10 +24,7 @@
       "package": "com.griplock.app",
       "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false,
-      "permissions": [
-        "android.permission.NFC"
-      ]
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "single",
@@ -44,7 +41,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "imageWidth": 180,
           "resizeMode": "contain",
           "backgroundColor": "#000000",
           "dark": {
@@ -57,9 +54,7 @@
         "react-native-nfc-manager",
         {
           "nfcReaderUsageDescription": "GRIPLOCK needs NFC access to read your secure card.",
-          "selectIdentifiers": [
-            "A0000000041010"
-          ],
+          "selectIdentifiers": ["A0000000041010"],
           "systemCodes": []
         }
       ],
@@ -69,10 +64,7 @@
       "reactCompiler": false
     },
     "extra": {
-      "HELIUS_RPC_URL": "${EXPO_PUBLIC_HELIUS_RPC_URL}",
-      "eas": {
-        "projectId": "af453638-adee-4bbe-a28e-d5a8da1874c4"
-      }
+      "HELIUS_RPC_URL": "${EXPO_PUBLIC_HELIUS_RPC_URL}"
     }
   }
 }

@@ -416,7 +416,7 @@ export default function WalletDetailScreen() {
             </View>
             <View style={styles.verticalDivider} />
             <View style={styles.gridCell}>
-              <GridActionButton label="Send privately" onPress={handleSendPrivately} />
+              <GridActionButton label="Receive" onPress={handleReceive} />
             </View>
           </View>
           <View style={styles.horizontalDivider} />

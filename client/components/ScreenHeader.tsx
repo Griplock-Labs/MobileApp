@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useNavigation, CommonActions } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import Svg, { Path, Defs, LinearGradient, Stop } from "react-native-svg";
 
 import { Spacing, Fonts } from "@/constants/theme";
@@ -61,12 +61,8 @@ export default function ScreenHeader({
     if (onBack) {
       onBack();
     } else {
-      navigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: "Home" }],
-        })
-      );
+      // Default: just go back to previous screen, don't reset session
+      navigation.goBack();
     }
   };
 

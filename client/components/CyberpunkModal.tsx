@@ -20,6 +20,7 @@ interface CyberpunkModalProps {
   visible: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  closeDisabled?: boolean;
 }
 
 function TopCorner() {
@@ -139,18 +140,22 @@ function BottomRightAccent() {
   );
 }
 
-function CloseButton({ onPress }: { onPress: () => void }) {
+function CloseButton({ onPress, disabled }: { onPress: () => void; disabled?: boolean }) {
   return (
-    <Pressable style={styles.closeButton} onPress={onPress}>
+    <Pressable 
+      style={[styles.closeButton, disabled && styles.closeButtonDisabled]} 
+      onPress={onPress}
+      disabled={disabled}
+    >
       <Svg width={42} height={42} viewBox="0 0 42 42">
         <Path
           d="M41.2539 20.9805L20.9805 41.2539L0.707031 20.9805L20.9805 0.707031L41.2539 20.9805Z"
-          stroke="#747474"
+          stroke={disabled ? "#444444" : "#747474"}
           strokeWidth={1}
           fill="none"
         />
-        <Path d="M15.7363 15.7363L26.6013 26.6013" stroke="white" strokeWidth={1} />
-        <Path d="M15.7363 26.6016L26.6013 15.7365" stroke="white" strokeWidth={1} />
+        <Path d="M15.7363 15.7363L26.6013 26.6013" stroke={disabled ? "#555555" : "white"} strokeWidth={1} />
+        <Path d="M15.7363 26.6016L26.6013 15.7365" stroke={disabled ? "#555555" : "white"} strokeWidth={1} />
       </Svg>
     </Pressable>
   );
@@ -160,8 +165,10 @@ export default function CyberpunkModal({
   visible,
   onClose,
   children,
+  closeDisabled = false,
 }: CyberpunkModalProps) {
   const handleClose = async () => {
+    if (closeDisabled) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onClose();
   };
@@ -194,7 +201,7 @@ export default function CyberpunkModal({
           >
             {children}
           </ScrollView>
-          <CloseButton onPress={handleClose} />
+          <CloseButton onPress={handleClose} disabled={closeDisabled} />
         </View>
       </View>
     </Modal>
@@ -279,6 +286,9 @@ const styles = StyleSheet.create({
     height: 42,
     justifyContent: "center",
     alignItems: "center",
+  },
+  closeButtonDisabled: {
+    opacity: 0.3,
   },
   topLeftAccent: {
     position: "absolute",

@@ -1,5 +1,70 @@
 # GRIPLOCK Mobile - Release Notes
 
+## v1.3.0 (February 3, 2026)
+
+### New Features
+- **Multi-Auth Level System** - User-selectable authentication modes:
+  - **NFC + PIN** (Standard) - Tap card + 6-digit PIN
+  - **NFC + Secret** (Enhanced) - Tap card + secret phrase (skip PIN)
+  - **NFC + PIN + Secret** (Maximum) - Tap card + PIN + secret phrase
+- **Settings Screen** - Configure authentication level and manage secret phrase
+- **Secret Phrase Setup** - Encrypted storage in SecureStore with setup/update modal
+- **First Launch Auth Selection** - Prompts user to select preferred auth level on first app launch
+- **Update Checker** - Automatic detection of new app versions from GitHub releases. Shows "UPDATE AVAILABLE" on HomeScreen with tap-to-download link to https://app.griplock.io/
+- **Receive Privately Improvements** - Stealth address rotation after each successful private receive, ensuring unique addresses for enhanced privacy
+- **DeriveWalletScreen** - Unified full-screen wallet deriving animation across all authentication modes
+
+### UI Components
+- **AuthLevelModal** - Selection UI with security strength indicators for each auth mode
+- **SecretSetupModal** - Secret phrase entry with confirmation, validation, and visibility toggle
+
+### Improvements
+- Consistent UX for wallet derivation regardless of auth mode selected
+- Better address index persistence for stealth address generation
+- Fixed async file operations in ReceivePrivatelyScreen (proper await on file.text())
+
+### Bug Fixes
+- Fixed NaN bug in stealth address index calculation
+- Fixed file storage operations not being properly awaited
+
+---
+
+## v1.2.0 (January 31, 2026)
+
+### New Features
+- **Private Send** - Send SOL with full sender anonymity via Privacy Cash protocol and stealth addresses
+- **Regular Send** - Direct SOL transfers to any Solana address
+- **Transaction History** - Comprehensive history view showing all transaction types with retry/refund capabilities
+- **Processing Screen** - Real-time status updates with ASCII loader for all transaction flows (shield/unshield/send)
+- **Switch Key Button** - Quick wallet key rotation/switching functionality
+- **Firebase Analytics** - Complete behavioral analytics with graceful Expo Go fallback (silent mode)
+- **Version Display** - App version now shown on HomeScreen ("GRIPLOCK v1.2.0")
+
+### Bug Fixes
+- Fixed transaction signing flow edge cases
+- Improved error handling for failed NFC reads
+- Fixed balance refresh after transactions complete
+- Corrected PIN attempt counter reset logic
+
+### Analytics Events Tracked
+- `nfc_tap` - Success/failure with error details
+- `pin_attempt` - Success/failure with attempt count
+- `wallet_derived` - Successful wallet derivation events
+- `button_press` - Key button interactions (scan_qr, disconnect, receive, etc.)
+- Automatic screen view tracking via NavigationContainer
+
+### Technical Improvements
+- EAS Build pre-install hook for google-services.json generation from base64 secret
+- Analytics silently disabled in Expo Go (no crashes, console logs only)
+- Processing screen with real-time status updates for all transaction types
+
+### Required Secrets (Production Build)
+```
+GOOGLE_SERVICES_JSON_BASE64=<base64-encoded google-services.json>
+```
+
+---
+
 ## v1.1.0 (January 28, 2026)
 
 ### New Features

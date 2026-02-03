@@ -79,6 +79,7 @@ export default function SuccessScreen() {
       case 'shield': return 'FUND SHIELDED';
       case 'unshield': return 'FUND UNSHIELDED';
       case 'privateSend': return 'SENT PRIVATELY';
+      case 'privateReceive': return 'RECEIVED PRIVATELY';
       case 'send': return 'SOL SENT';
       default: return 'TRANSACTION COMPLETE';
     }
@@ -89,6 +90,7 @@ export default function SuccessScreen() {
       case 'shield': return 'Successfully shielded';
       case 'unshield': return 'Successfully unshielded';
       case 'privateSend': return 'Sent via Privacy Cash';
+      case 'privateReceive': return 'Funds added to shielded balance';
       case 'send': return 'Transfer complete';
       default: return 'Transaction completed';
     }

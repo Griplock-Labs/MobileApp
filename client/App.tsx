@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from "react";
-import { StyleSheet } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { NavigationContainer, DarkTheme, NavigationContainerRef } from "@react-navigation/native";
 import { logScreenView, logSessionStart } from "@/lib/analytics";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -23,6 +23,9 @@ import RootStackNavigator from "@/navigation/RootStackNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Colors } from "@/constants/theme";
 import { WebRTCProvider } from "@/context/WebRTCContext";
+import { AuthPreferenceProvider, useAuthPreference } from "@/context/AuthPreferenceContext";
+import AuthLevelModal, { AuthLevel } from "@/components/AuthLevelModal";
+import SecretSetupModal from "@/components/SecretSetupModal";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -38,6 +41,61 @@ const GriplockDarkTheme = {
     notification: Colors.dark.primary,
   },
 };
+
+function AuthSetupWrapper({ children }: { children: React.ReactNode }) {
+  const { isFirstLaunch, isLoading, authLevel, setAuthLevel, setSecret, completeFirstLaunch, requiresSecret, hasSecret } = useAuthPreference();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showSecretModal, setShowSecretModal] = useState(false);
+  const [pendingAuthLevel, setPendingAuthLevel] = useState<AuthLevel | null>(null);
+
+  useEffect(() => {
+    if (!isLoading && isFirstLaunch) {
+      setShowAuthModal(true);
+    }
+  }, [isLoading, isFirstLaunch]);
+
+  const handleAuthLevelSelect = async (level: AuthLevel) => {
+    await setAuthLevel(level);
+    setShowAuthModal(false);
+    
+    if (level === "nfc_secret" || level === "nfc_pin_secret") {
+      setPendingAuthLevel(level);
+      setShowSecretModal(true);
+    } else {
+      await completeFirstLaunch();
+    }
+  };
+
+  const handleSecretConfirm = async (secret: string) => {
+    await setSecret(secret);
+    setShowSecretModal(false);
+    setPendingAuthLevel(null);
+    await completeFirstLaunch();
+  };
+
+  if (isLoading) {
+    return <View style={styles.root} />;
+  }
+
+  return (
+    <>
+      {children}
+      <AuthLevelModal
+        visible={showAuthModal}
+        onClose={() => {}}
+        onSelect={handleAuthLevelSelect}
+        currentLevel={authLevel || undefined}
+        isFirstTime={isFirstLaunch}
+      />
+      <SecretSetupModal
+        visible={showSecretModal}
+        onClose={() => {}}
+        onConfirm={handleSecretConfirm}
+        isUpdate={false}
+      />
+    </>
+  );
+}
 
 export default function App() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
@@ -88,23 +146,27 @@ export default function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <WebRTCProvider>
-          <SafeAreaProvider>
-            <GestureHandlerRootView style={styles.root}>
-              <KeyboardProvider>
-                <NavigationContainer 
-                  ref={navigationRef}
-                  theme={GriplockDarkTheme}
-                  onReady={onNavigationReady}
-                  onStateChange={onNavigationStateChange}
-                >
-                  <RootStackNavigator />
-                </NavigationContainer>
-                <StatusBar style="light" />
-              </KeyboardProvider>
-            </GestureHandlerRootView>
-          </SafeAreaProvider>
-        </WebRTCProvider>
+        <AuthPreferenceProvider>
+          <WebRTCProvider>
+            <SafeAreaProvider>
+              <GestureHandlerRootView style={styles.root}>
+                <KeyboardProvider>
+                  <AuthSetupWrapper>
+                    <NavigationContainer 
+                      ref={navigationRef}
+                      theme={GriplockDarkTheme}
+                      onReady={onNavigationReady}
+                      onStateChange={onNavigationStateChange}
+                    >
+                      <RootStackNavigator />
+                    </NavigationContainer>
+                    <StatusBar style="light" />
+                  </AuthSetupWrapper>
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </SafeAreaProvider>
+          </WebRTCProvider>
+        </AuthPreferenceProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );
