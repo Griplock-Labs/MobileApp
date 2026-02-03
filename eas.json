@@ -3,26 +3,25 @@
     "version": ">= 3.0.0"
   },
   "build": {
+    "base": {
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
       "distribution": "internal",
-      "environment": "development",
-      "android": {
-        "buildType": "apk"
-      }
+      "environment": "development"
     },
     "preview": {
+      "extends": "base",
       "distribution": "internal",
-      "environment": "preview",
-      "android": {
-        "buildType": "apk"
-      }
+      "environment": "preview"
     },
     "production": {
-      "environment": "production",
-      "android": {
-        "buildType": "apk"
-      }
+      "extends": "base",
+      "environment": "production"
     }
   },
   "submit": {
