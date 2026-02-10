@@ -4,6 +4,50 @@
 
 ---
 
+## Table of Contents
+
+- [0. TL;DR](#0-tldr)
+- [1. Goals & Non-Goals](#1-goals--non-goals)
+- [2. Threat Model](#2-threat-model)
+- [3. Cryptographic Primitives](#3-cryptographic-primitives)
+- [4. Data Structures](#4-data-structures)
+  - [4.1 Core Types](#41-core-types)
+  - [4.2 Master Root & Shares](#42-master-root--shares)
+  - [4.3 Encrypted Containers](#43-encrypted-containers)
+  - [4.4 Storage Objects](#44-storage-objects)
+- [5. Key Derivation & Access Policies](#5-key-derivation--access-policies)
+  - [5.1 User Key (K_user)](#51-user-key-k_user)
+  - [5.2 Device Key (K_dev)](#52-device-key-k_dev)
+  - [5.3 NFC UID Role](#53-nfc-uid-role)
+- [6. Protocol Flows](#6-protocol-flows)
+  - [6.1 Wallet Provisioning](#61-wallet-provisioning-create)
+  - [6.2 Normal Unlock / Sign](#62-normal-unlock--sign)
+  - [6.3 Recovery Scenarios](#63-recovery-scenarios)
+- [7. Pseudocode (Engineer-Ready)](#7-pseudocode-engineer-ready)
+  - [7.1 Create Wallet](#71-create-wallet)
+  - [7.2 Recover Wallet](#72-recover-wallet-drive--passkey)
+  - [7.3 Rotate PIN/Secret](#73-rotate-pinsecret)
+  - [7.4 Legacy Migration](#74-legacy-migration)
+- [8. Implementation Notes](#8-implementation-notes)
+- [9. Visual: Share Distribution](#9-visual-share-distribution)
+- [10. Recovery Matrix](#10-recovery-matrix)
+- [11. Legacy V1 Formula Reference](#11-legacy-v1-formula-reference)
+- [12. Share A Storage Phases](#12-share-a-storage-phases)
+- [13. Multi-NFC Wallet Support](#13-multi-nfc-wallet-support)
+- [14. UI Flows](#14-ui-flows)
+- [15. StorageProvider Abstraction](#15-storageprovider-abstraction)
+- [16. Future Scaling — Execution & Agent Layer](#16-future-scaling--execution--agent-layer)
+  - [16.1 Execution Policy Layer](#161-execution-policy-layer)
+  - [16.2 Human Intent Gating](#162-human-intent-gating)
+  - [16.3 Agent Execution Compatibility](#163-agent-execution-compatibility)
+  - [16.4 Programmable Authorization](#164-programmable-authorization)
+  - [16.5 Multi-Wallet & Multi-Chain Expansion](#165-multi-wallet--multi-chain-expansion)
+  - [16.6 Autonomous Workflow Infrastructure](#166-autonomous-workflow-infrastructure)
+  - [16.7 Custody Boundary Preservation](#167-custody-boundary-preservation)
+  - [16.8 Summary](#168-summary)
+
+---
+
 ## 0. TL;DR
 
 | Aspect | V1 (Legacy) | V2 (New) |
@@ -11,7 +55,12 @@
 | **Wallet Source** | Deterministic from PIN/NFC/Secret | Secure random 32 bytes (`MASTER_SECRET`) |
 | **PIN/SECRET/NFC Role** | Creates wallet | Policy unlock / intent gate only |
 | **Recovery Model** | None (memorize inputs) | 2-of-3 threshold (Shamir) |
-| **Recovery Shares** | N/A | Google Drive + Device + Passkey |
+| **Recovery Shares** | N/A | Recovery File (MVP) / Google Drive (Phase 2) + Device + Passkey |
+| **Share A Storage** | N/A | MVP: Manual file export/import. Phase 2: Google Drive auto-sync |
+| **Recovery File** | N/A | Contains Share A + encrypted Share C (passkey fallback) |
+| **Passkey Sync** | N/A | iCloud Keychain / Google Password Manager (primary), file fallback |
+| **Multi-NFC** | Single NFC | Multiple NFC cards, each = separate wallet profile |
+| **Server Custody** | N/A | None — fully non-custodial, no server-held shares |
 | **Crypto** | SHA256 (fast, vulnerable) | Argon2id/scrypt + AEAD |
 | **NFC UID** | Part of key derivation | Physical presence only |
 
@@ -105,7 +154,7 @@ type AeadParams = {
   algo: "xchacha20poly1305" | "aes256gcm";
 };
 
-type ShareLocation = "gdrive" | "device" | "passkey";
+type ShareLocation = "file" | "gdrive" | "device" | "passkey";
 ```
 
 ### 4.2 Master Root & Shares
@@ -145,10 +194,12 @@ type KdfEnvelope = {
 
 ### 4.4 Storage Objects
 
-#### Google Drive Object
+#### Recovery File Object (Share A + Share C Backup)
+
+The recovery file is a portable encrypted blob that contains **both Share A and an encrypted copy of Share C**. This ensures recovery is possible even when the passkey doesn't sync to a new device.
 
 ```typescript
-type DriveRecoveryObject = {
+type RecoveryFileObject = {
   schema: "griplock.recovery.v2";
   walletId: WalletId;
   createdAt: string;   // ISO timestamp
@@ -156,10 +207,17 @@ type DriveRecoveryObject = {
 
   // Share A: Encrypted with K_user (PIN/Secret)
   shareA: {
-    location: "gdrive";
+    location: "file";
     shamirIndex: number;
     kdf: KdfEnvelope;
     enc: EncryptedBlob;
+  };
+
+  // Share C backup: Also encrypted with K_user
+  // Fallback when passkey doesn't sync to new device
+  shareCBackup: {
+    shamirIndex: number;
+    enc: EncryptedBlob;  // Encrypted with same K_user as Share A
   };
 
   // NFC metadata (UID hash only, not secret)
@@ -178,6 +236,10 @@ type DriveRecoveryObject = {
     deviceIdHint?: string;  // Optional, non-sensitive
   };
 };
+
+// Phase 2: Google Drive auto-sync uses same object structure
+// but stored in Google Drive App Data folder (hidden from user)
+type DriveRecoveryObject = RecoveryFileObject;
 ```
 
 #### Device Object (SecureStore/Keychain)
@@ -289,9 +351,14 @@ K_user = Argon2id(
 │     └── (A, B, C) = ShamirSplit(MASTER_SECRET, k=2, n=3)     │
 │                                                              │
 │  4. ENCRYPT & STORE                                          │
-│     ├── Share A → encrypt(K_user) → Google Drive             │
+│     ├── Share A → encrypt(K_user) → Recovery File            │
 │     ├── Share B → encrypt(K_dev)  → Device SecureStore       │
-│     └── Share C → passkey wrap    → Store alongside Drive    │
+│     ├── Share C → passkey wrap    → Device SecureStore        │
+│     └── Share C → encrypt(K_user) → Recovery File (backup)   │
+│                                                              │
+│  5. EXPORT RECOVERY FILE                                     │
+│     ├── MVP: User saves file manually (Drive/iCloud/etc)     │
+│     └── Phase 2: Auto-sync to Google Drive App Data folder   │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -325,15 +392,24 @@ K_user = Argon2id(
 ┌──────────────────────────────────────────────────────────────┐
 │  RECOVERY: Phone Lost                                         │
 │                                                               │
-│  Available: Drive (Share A) + Passkey (Share C)               │
-│  Missing:   Device (Share B)                                  │
-│                                                               │
+│  PRIMARY PATH (Passkey synced via iCloud/Google):              │
+│  Available: Recovery File (Share A + C backup) + Synced       │
+│             Passkey (Share C)                                  │
 │  Steps:                                                       │
-│  1. Login to Google Drive on new device                       │
-│  2. Authenticate with Passkey (FaceID on new device)          │
+│  1. Import recovery file on new device                        │
+│  2. Enter PIN/Secret → decrypt Share A                        │
+│  3. Authenticate with synced Passkey → unwrap Share C         │
+│  4. Reconstruct MASTER_SECRET from A + C                      │
+│  5. Re-provision Device Share B                               │
+│                                                               │
+│  FALLBACK PATH (Passkey NOT synced):                          │
+│  Available: Recovery File (Share A + C backup)                │
+│  Steps:                                                       │
+│  1. Import recovery file on new device                        │
+│  2. Enter PIN/Secret → decrypt Share A AND Share C backup     │
 │  3. Reconstruct MASTER_SECRET from A + C                      │
 │  4. Re-provision Device Share B                               │
-│  5. Re-pair NFC card                                          │
+│  5. Register new Passkey, re-wrap Share C                     │
 │                                                               │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -477,7 +553,46 @@ function createWallet(auth: {
     device: {}
   };
 
-  uploadToGoogleDrive(walletId, driveObj);
+  // 7) Also encrypt Share C with K_user for recovery file backup
+  const encShareC_backup = aeadEncrypt(shareC.value, K_user, aadFrom(walletId + ":shareC"));
+
+  const recoveryFileObj: RecoveryFileObject = {
+    schema: "griplock.recovery.v2",
+    walletId,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    shareA: {
+      location: "file",
+      shamirIndex: shareA.index,
+      kdf: {
+        version: 1,
+        kdf: kdfParams,
+        salt: saltA,
+        pinPolicy: {
+          pinRequired: !!auth.pin,
+          secretRequired: !!auth.secret
+        }
+      },
+      enc: encShareA
+    },
+    shareCBackup: {
+      shamirIndex: shareC.index,
+      enc: encShareC_backup
+    },
+    nfc: {
+      uidHash: auth.nfcUid ? sha256Hex(normalizeUid(auth.nfcUid)) : "",
+      lastPairedAt: auth.nfcUid ? nowIso() : undefined
+    },
+    passkey: {
+      credentialId: auth.passkeyCredentialId,
+      rpId: auth.rpId
+    },
+    device: {}
+  };
+
+  // MVP: Export as file for user to save
+  // Phase 2: Auto-upload to Google Drive App Data folder
+  exportRecoveryFile(walletId, recoveryFileObj);
 
   const deviceObj: DeviceRecoveryObject = {
     schema: "griplock.recovery.v2",
@@ -496,13 +611,14 @@ function createWallet(auth: {
 }
 ```
 
-### 7.2 Recover Wallet (Drive + Passkey)
+### 7.2 Recover Wallet (From Recovery File)
 
 ```typescript
-function recoverWithDriveAndPasskey(input: {
-  walletId: WalletId,
+function recoverFromFile(input: {
+  recoveryFile: RecoveryFileObject,
   pin?: string,
   secret?: string,
+  passkeyAvailable: boolean,  // true if passkey synced to new device
   requireNfcTap?: boolean
 }): { masterSecret: Bytes, address: string } {
 
@@ -511,12 +627,11 @@ function recoverWithDriveAndPasskey(input: {
     requireNfcPresence();
   }
 
-  // 1) Fetch Drive object
-  const driveObj = downloadFromGoogleDrive(input.walletId);
+  const fileObj = input.recoveryFile;
 
-  // 2) Decrypt Share A using K_user
-  const saltA = driveObj.shareA.kdf.salt;
-  const kdfParams = driveObj.shareA.kdf.kdf;
+  // 1) Decrypt Share A using K_user
+  const saltA = fileObj.shareA.kdf.salt;
+  const kdfParams = fileObj.shareA.kdf.kdf;
 
   const K_user = argon2id(
     utf8((input.pin ?? "") + ":" + (input.secret ?? "")),
@@ -525,35 +640,56 @@ function recoverWithDriveAndPasskey(input: {
   );
 
   const shareA_value = aeadDecrypt(
-    driveObj.shareA.enc,
+    fileObj.shareA.enc,
     K_user,
-    aadFrom(input.walletId)
+    aadFrom(fileObj.walletId)
   );
   const shareA: ShamirShare = {
-    index: driveObj.shareA.shamirIndex,
+    index: fileObj.shareA.shamirIndex,
     value: shareA_value,
     threshold: 2,
     shareCount: 3
   };
 
-  // 3) Unwrap Share C with passkey (biometric)
-  const shareC_value = passkeyUnwrapShare(
-    input.walletId,
-    driveObj.passkey.credentialId,
-    driveObj.passkey.rpId
-  );
-  const shareC: ShamirShare = {
-    index: 3,
-    value: shareC_value,
-    threshold: 2,
-    shareCount: 3
-  };
+  let shareC: ShamirShare;
 
-  // 4) Reconstruct MASTER_SECRET
+  if (input.passkeyAvailable) {
+    // PRIMARY PATH: Passkey synced via iCloud/Google
+    const shareC_value = passkeyUnwrapShare(
+      fileObj.walletId,
+      fileObj.passkey.credentialId,
+      fileObj.passkey.rpId
+    );
+    shareC = {
+      index: fileObj.shareCBackup.shamirIndex,
+      value: shareC_value,
+      threshold: 2,
+      shareCount: 3
+    };
+  } else {
+    // FALLBACK PATH: Decrypt Share C backup from recovery file
+    const shareC_value = aeadDecrypt(
+      fileObj.shareCBackup.enc,
+      K_user,
+      aadFrom(fileObj.walletId + ":shareC")
+    );
+    shareC = {
+      index: fileObj.shareCBackup.shamirIndex,
+      value: shareC_value,
+      threshold: 2,
+      shareCount: 3
+    };
+  }
+
+  // 3) Reconstruct MASTER_SECRET
   const MASTER_SECRET = shamirCombine([shareA, shareC]);
 
-  // 5) Derive wallet
+  // 4) Derive wallet
   const keypair = solanaKeypairFromSeed(MASTER_SECRET);
+
+  // 5) Re-provision device share & new passkey if needed
+  // (handled by caller after successful reconstruction)
+
   return {
     masterSecret: MASTER_SECRET,
     address: keypair.publicKey.toBase58()
@@ -712,23 +848,63 @@ function clearSensitiveData(...arrays: Uint8Array[]): void {
              │                     │                     │
              ▼                     ▼                     ▼
     ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
-    │  Google Drive   │   │ Device Keychain │   │ Passkey-bound   │
-    │   (Cloud)       │   │ (Local HW)      │   │ (Biometric)     │
-    └─────────────────┘   └─────────────────┘   └─────────────────┘
+    │  Recovery File  │   │ Device Keychain │   │ Device Keychain │
+    │  (User exports) │   │ (Local HW)      │   │ (Passkey-bound) │
+    └────────┬────────┘   └─────────────────┘   └────────┬────────┘
+             │                                           │
+             │           ┌─────────────────┐             │
+             └──────────▶│  Recovery File  │◀────────────┘
+                         │  contains both  │  (Share C backup
+                         │  A + C backup   │   also encrypted
+                         └────────┬────────┘   with K_user)
+                                  │
+                    ┌─────────────┴─────────────┐
+                    │                           │
+                    ▼                           ▼
+          ┌─────────────────┐         ┌─────────────────┐
+          │  MVP: Manual    │         │  Phase 2:       │
+          │  File Export    │         │  Google Drive   │
+          │  (Save anywhere)│         │  Auto-Sync      │
+          └─────────────────┘         └─────────────────┘
+```
+
+### Passkey Sync Strategy
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  PASSKEY SYNC (Primary recovery path for phone lost)         │
+│                                                               │
+│  Apple ecosystem:                                             │
+│  • Passkey auto-syncs via iCloud Keychain                    │
+│  • Available on new Apple device after iCloud login          │
+│                                                               │
+│  Google ecosystem:                                            │
+│  • Passkey auto-syncs via Google Password Manager            │
+│  • Available on new Android device after Google login        │
+│                                                               │
+│  Cross-ecosystem:                                             │
+│  • Passkey does NOT sync between Apple ↔ Android             │
+│  • Recovery File fallback kicks in (A + C from file)          │
+│                                                               │
+│  IMPORTANT: No server-held shares. Fully non-custodial.       │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 10. Recovery Matrix
 
-| Scenario | Available | Missing | Recoverable? |
-|----------|-----------|---------|--------------|
-| Phone lost | A (Drive) + C (Passkey) | B (Device) | ✅ Yes |
-| PIN forgotten | B (Device) + C (Passkey) | A (encrypted) | ✅ Yes |
-| Passkey reset | A (Drive) + B (Device) | C (Passkey) | ✅ Yes |
-| Drive compromised | A (ciphertext) | B, C | ❌ Attack fails |
-| Device + Passkey lost | A (Drive) | B, C | ❌ Need 2 shares |
-| All lost | None | A, B, C | ❌ Unrecoverable |
+| Scenario | Available | Missing | Recoverable? | Notes |
+|----------|-----------|---------|--------------|-------|
+| Phone lost (passkey synced) | A (File) + C (Synced Passkey) | B (Device) | ✅ Yes | Primary path |
+| Phone lost (passkey NOT synced) | A + C backup (both from Recovery File) | B (Device), C (Passkey) | ✅ Yes | Fallback — PIN/Secret decrypts both A & C from file |
+| PIN forgotten | B (Device) + C (Passkey) | A (encrypted) | ✅ Yes | Passkey + device auth |
+| Passkey reset | A (File) + B (Device) | C (Passkey) | ✅ Yes | PIN/Secret + device key |
+| File compromised | A + C (ciphertexts) | B, decryption keys | ❌ Attack fails | Argon2id protects |
+| Device + Passkey lost | A + C (from file) | B (Device) | ✅ Yes | PIN/Secret decrypts file |
+| File lost + device OK | B (Device) + C (Passkey) | A (File) | ✅ Yes | Re-export new file |
+| All lost | None | A, B, C | ❌ Unrecoverable | Transfer assets to new wallet |
 
 ---
 
@@ -749,5 +925,415 @@ V1_KEYPAIR = Solana.Keypair.fromSeed(V1_SEED)
 
 ---
 
-*Document Version: 2.0*
-*Last Updated: 2026-02-05*
+## 12. Share A Storage Phases
+
+### Phase 1: MVP — Manual File Export/Import
+
+The recovery file is exported as an encrypted JSON blob that the user saves manually.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  SHARE A STORAGE — MVP (Phase 1)                              │
+│                                                               │
+│  CREATE:                                                      │
+│  1. Encrypt Share A + Share C → Recovery File                │
+│  2. System share sheet opens                                  │
+│  3. User saves to: Files, AirDrop, Email, Drive, etc.        │
+│                                                               │
+│  RECOVER:                                                     │
+│  1. User opens app on new/same device                        │
+│  2. Tap "Import Recovery File"                               │
+│  3. Document picker → select .griplock file                  │
+│  4. Enter PIN/Secret to decrypt                              │
+│                                                               │
+│  File format: griplock-{walletId-short}.enc                   │
+│  Content: JSON (RecoveryFileObject) → base64                  │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Phase 2: Google Drive Auto-Sync
+
+Upgrade path: Same `RecoveryFileObject` structure, stored in Google Drive App Data folder.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  SHARE A STORAGE — Google Drive (Phase 2)                     │
+│                                                               │
+│  CREATE:                                                      │
+│  1. User connects Google account (OAuth)                     │
+│  2. Auto-upload encrypted blob to Drive App Data folder      │
+│  3. Hidden from user's Drive UI                              │
+│  4. Optional: also save locally as backup                    │
+│                                                               │
+│  RECOVER:                                                     │
+│  1. User logs into Google on new device                      │
+│  2. App auto-downloads recovery blob                         │
+│  3. Enter PIN/Secret to decrypt                              │
+│                                                               │
+│  UPGRADE FROM MVP:                                            │
+│  1. App detects local recovery file exists                   │
+│  2. Banner: "Sync to Google Drive?"                          │
+│  3. OAuth → upload existing file → Drive becomes primary      │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### StorageProvider Abstraction
+
+Clean upgrade path between phases:
+
+```typescript
+interface ShareAStorage {
+  save(walletId: WalletId, blob: RecoveryFileObject): Promise<void>;
+  load(walletId?: WalletId): Promise<RecoveryFileObject>;
+  exists(walletId?: WalletId): Promise<boolean>;
+  delete(walletId: WalletId): Promise<void>;
+}
+
+class LocalFileStorage implements ShareAStorage {
+  // MVP: expo-file-system + expo-sharing + expo-document-picker
+  async save(walletId, blob) { /* export via share sheet */ }
+  async load() { /* import via document picker */ }
+  async exists() { /* check local cache */ }
+  async delete(walletId) { /* remove local cache */ }
+}
+
+class GoogleDriveStorage implements ShareAStorage {
+  // Phase 2: expo-auth-session + Google Drive API
+  async save(walletId, blob) { /* upload to App Data folder */ }
+  async load(walletId) { /* download from App Data folder */ }
+  async exists(walletId) { /* check Drive for file */ }
+  async delete(walletId) { /* remove from Drive */ }
+}
+```
+
+---
+
+## 13. Multi-NFC Wallet Support
+
+Each NFC card maps to a separate wallet profile. The NFC UID serves as a wallet identifier/index, NOT a cryptographic input.
+
+### Data Structure
+
+```typescript
+type WalletProfile = {
+  walletId: WalletId;
+  nfcUidHash: string;          // SHA256(normalizedUID) — lookup key
+  address: string;             // Solana public key
+  createdAt: string;
+  authPolicy: {
+    pinRequired: boolean;
+    secretRequired: boolean;
+  };
+  // Share B stored in SecureStore keyed by walletId
+  // Share C (passkey-wrapped) stored in SecureStore keyed by walletId
+  // Recovery file exported per wallet
+};
+
+type WalletIndex = {
+  schema: "griplock.wallets.v2";
+  profiles: Record<string, WalletProfile>;  // key = nfcUidHash
+};
+
+// Stored in SecureStore as: "griplock:wallet_index"
+```
+
+### Flow
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  MULTI-NFC WALLET SUPPORT                                     │
+│                                                               │
+│  NFC TAP → Read UID                                          │
+│     │                                                        │
+│     ├── UID hash found in wallet index?                      │
+│     │   ├── YES → Load wallet profile → Ask PIN → Unlock     │
+│     │   └── NO  → "New NFC card detected"                    │
+│     │             → Setup new wallet flow                     │
+│     │             → Register in wallet index                  │
+│                                                               │
+│  Each NFC card has:                                           │
+│  • Own MASTER_SECRET                                         │
+│  • Own 3 Shamir shares                                       │
+│  • Own PIN/Secret                                            │
+│  • Own Passkey registration                                  │
+│  • Own Recovery File: griplock-{walletId-short}.enc          │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 14. UI Flows
+
+### 14.1 Wallet Creation (Setup)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  WALLET CREATION UI FLOW                                      │
+│                                                               │
+│  Screen 1: NFC Tap                                           │
+│  └── "Tap your GRIPLOCK card to begin"                       │
+│  └── Read NFC UID → check wallet index                       │
+│  └── New card → proceed to setup                             │
+│                                                               │
+│  Screen 2: Set PIN                                           │
+│  └── 6-digit PIN input                                       │
+│  └── Confirm PIN                                             │
+│                                                               │
+│  Screen 3: Optional Secret                                   │
+│  └── "Add an extra passphrase?" (toggle)                     │
+│  └── If yes: enter secret, confirm secret                    │
+│                                                               │
+│  Screen 4: Passkey Setup                                     │
+│  └── System FaceID/TouchID registration prompt               │
+│  └── ✅ "Passkey created"                                    │
+│                                                               │
+│  Screen 5: Export Recovery File                              │
+│  └── "Back up your recovery file"                            │
+│  └── [Download Recovery File] → system share sheet           │
+│  └── ✅ "Recovery file saved. Keep it safe!"                 │
+│                                                               │
+│  Screen 6: Success                                           │
+│  └── "Wallet created!" + public address                      │
+│  └── [Go to Wallet] button                                   │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 14.2 Unlock (Day-to-Day)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  UNLOCK UI FLOW                                               │
+│                                                               │
+│  Screen 1: NFC Tap                                           │
+│  └── "Tap your GRIPLOCK card"                                │
+│  └── Read UID → lookup wallet profile                        │
+│                                                               │
+│  Screen 2: Enter PIN (+ Secret if configured)                │
+│  └── PIN keypad                                              │
+│  └── Derive K_user → decrypt Share B (device)                │
+│  └── Auto-trigger Passkey (FaceID/TouchID)                   │
+│  └── Decrypt Share C                                         │
+│                                                               │
+│  Screen 3: Wallet Home                                       │
+│  └── Balance, actions, transaction history                   │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 14.3 Recovery
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  RECOVERY UI FLOW                                             │
+│                                                               │
+│  Screen 1: Recovery Options                                  │
+│  └── [Import Recovery File]                                  │
+│  └── [Restore from Google Drive] (Phase 2)                   │
+│                                                               │
+│  Screen 2: Import File                                       │
+│  └── Document picker → select .griplock file                 │
+│  └── Parse RecoveryFileObject                                │
+│                                                               │
+│  Screen 3: Enter PIN/Secret                                  │
+│  └── Based on pinPolicy in file                              │
+│  └── Decrypt Share A + Share C backup                        │
+│                                                               │
+│  Screen 4: Reconstruct                                       │
+│  └── Shamir combine (A + C) → MASTER_SECRET                  │
+│  └── Derive Solana keypair                                   │
+│  └── Show recovered address                                  │
+│                                                               │
+│  Screen 5: Re-provision                                      │
+│  └── Generate new Device key → encrypt Share B               │
+│  └── Register new Passkey → wrap Share C                     │
+│  └── Export new recovery file (optional)                     │
+│                                                               │
+│  Screen 6: Transfer Assets                                   │
+│  └── "For security, transfer assets to a new wallet"         │
+│  └── [Create New Wallet] → sweep assets                      │
+│  └── Or [Keep Current Wallet] (user choice)                  │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 14.4 Google Drive Upgrade (Phase 2)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  GOOGLE DRIVE UPGRADE UI FLOW                                 │
+│                                                               │
+│  Trigger: App update + local recovery file detected          │
+│                                                               │
+│  Banner: "Sync backup to Google Drive for easier recovery?"  │
+│  └── [Connect Google Drive] → OAuth login                    │
+│  └── Auto-upload existing recovery file                      │
+│  └── ✅ "Synced! Your backup is now on Google Drive"          │
+│                                                               │
+│  New wallet creation after upgrade:                           │
+│  └── Replaces manual file export with auto-sync              │
+│  └── Optional: [Also save locally] for redundancy            │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 15. StorageProvider Abstraction
+
+See Section 12 for the `ShareAStorage` interface and implementations. The abstraction layer ensures:
+
+1. **Zero crypto changes** when upgrading from MVP file export to Google Drive
+2. **Backward compatible** — users with manual files can still import them
+3. **Provider-agnostic** — could extend to iCloud, Dropbox, etc. in the future
+4. **Testable** — mock storage provider for unit tests
+
+### Provider Selection Logic
+
+```typescript
+function getStorageProvider(): ShareAStorage {
+  if (googleDriveConnected()) {
+    return new GoogleDriveStorage();
+  }
+  return new LocalFileStorage();
+}
+```
+
+---
+
+## 16. Future Scaling — Execution & Agent Layer
+
+Griplock v2's architecture is designed not only for secure wallet custody and recovery, but also for future execution scalability.
+
+By separating wallet root ownership from authentication and execution permissions, Griplock enables programmable transaction workflows without altering the underlying key model.
+
+Wallet derivation remains anchored to a random on-device master secret, while execution logic can evolve independently through policy and intent layers.
+
+### 16.1 Execution Policy Layer
+
+Authentication factors such as NFC, PIN, Secret, and Passkeys form a programmable policy framework governing transaction execution.
+
+Execution policies may define:
+
+- Multi-factor signing requirements
+- Transaction value escalation rules
+- Time-delayed execution windows
+- Session-bound authorization scopes
+- Risk-tiered approval thresholds
+
+This allows execution logic to scale without requiring wallet rotation or recovery changes.
+
+### 16.2 Human Intent Gating
+
+Griplock introduces a physical verification layer to ensure that transaction execution always reflects human intent.
+
+NFC operates as an execution confirmation mechanism rather than a cryptographic key.
+
+**Intent gating properties:**
+
+- Physical tap required for high-risk actions
+- Prevents remote or silent execution
+- Confirms user presence at signing time
+- Acts as a safeguard against automated misuse
+
+This model ensures autonomous systems cannot finalize execution without user awareness.
+
+### 16.3 Agent Execution Compatibility
+
+Griplock v2 is designed to support AI agent–initiated transaction workflows.
+
+Agents function as execution initiators, not custodians.
+
+**Security boundaries:**
+
+- Agents never access MASTER_SECRET
+- Agents cannot derive private keys
+- Execution rights are policy-scoped
+- Human verification remains enforceable
+
+**Execution flow:**
+
+```
+Agent proposes transaction
+         ↓
+Policy engine evaluates conditions
+         ↓
+Authentication requirements triggered
+         ↓
+Human intent verification (if required)
+         ↓
+Transaction executed
+```
+
+### 16.4 Programmable Authorization
+
+Execution permissions may be dynamically defined across contexts.
+
+| Scenario | Required Authorization |
+|----------|------------------------|
+| Low-value transfer | PIN |
+| High-value transfer | NFC + PIN |
+| Contract execution | NFC + Passkey |
+| Agent-initiated action | NFC + Passkey |
+
+Policies remain upgradeable without modifying wallet roots or recovery shares.
+
+### 16.5 Multi-Wallet & Multi-Chain Expansion
+
+A single MASTER_SECRET may derive multiple wallet contexts.
+
+**Supported scaling models:**
+
+- Multi-account wallets
+- Chain-specific derivation paths
+- Context-bound execution rules
+- Agent-scoped wallet permissions
+
+This enables ecosystem expansion without duplicating custody infrastructure.
+
+### 16.6 Autonomous Workflow Infrastructure
+
+Griplock's execution layer supports programmable transaction automation.
+
+**Potential workflows include:**
+
+- Subscription payments
+- Treasury operations
+- Scheduled transfers
+- Agent-managed execution pipelines
+
+All automated execution remains subject to policy validation and human gating.
+
+### 16.7 Custody Boundary Preservation
+
+Despite execution scalability, custody guarantees remain unchanged.
+
+**System invariants:**
+
+- MASTER_SECRET never exposed to agents
+- Recovery shares remain isolated
+- Execution permissions are revocable
+- Policy overrides require authentication
+
+Execution scalability does not weaken self-custody assurances.
+
+### 16.8 Summary
+
+Griplock v2 extends beyond wallet security into programmable execution infrastructure.
+
+By separating custody from execution, the architecture enables:
+
+- Agent-compatible transaction workflows
+- Policy-driven authentication escalation
+- Human-gated autonomous systems
+- Multi-wallet and multi-chain scaling
+
+All while preserving full self-custody and eliminating seed phrase dependency.
+
+---
+
+*Document Version: 2.2*
+*Last Updated: 2026-02-10*

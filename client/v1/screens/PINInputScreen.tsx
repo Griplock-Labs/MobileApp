@@ -1,0 +1,878 @@
+import React, { useState, useCallback, useEffect, useRef } from "react";
+import { View, StyleSheet, Platform, Pressable, Text, InteractionManager } from "react-native";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import * as Haptics from "expo-haptics";
+import Svg, { Rect, Path } from "react-native-svg";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSequence,
+  withTiming,
+  withSpring,
+  withRepeat,
+  Easing,
+  interpolate,
+} from "react-native-reanimated";
+
+import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
+import { RootStackParamList } from "@/navigation/RootStackNavigator";
+import { useWebRTC } from "@/context/WebRTCContext";
+import { useAuthPreference } from "@/context/AuthPreferenceContext";
+import { deriveSolanaAddress, deriveSolanaKeypair } from "@/lib/crypto";
+import ScreenHeader from "@/components/ScreenHeader";
+import CyberpunkErrorModal from "@/components/CyberpunkErrorModal";
+import { logPINAttempt, logWalletDerived, logEvent } from "@/lib/analytics";
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, "PINInput">;
+type RouteProps = RouteProp<RootStackParamList, "PINInput">;
+
+const PIN_LENGTH = 6;
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_DELAYS: Record<number, number> = {
+  2: 5,
+  3: 15,
+  4: 30,
+  5: 60,
+};
+const KEYPAD_NUMBERS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "backspace"];
+
+function LogoFill({ filledCount }: { filledCount: number }) {
+  return (
+    <View style={logoStyles.container}>
+      <Svg width={110} height={110} viewBox="0 0 110 110">
+        <Path d="M36.1514 17.7041L36.1416 17.71L36.3164 17.8848L54.3721 35.9414L45.291 45.0225L25.5928 25.3242L25.4668 25.4502C17.902 33.011 13.2227 43.4594 13.2227 55C13.2227 78.0731 31.9269 96.7773 55 96.7773C70.8742 96.7773 84.6794 87.9236 91.749 74.8857L91.8926 74.6221H50.2285V61.7783H109.403C106.064 88.8569 82.9817 109.821 55 109.821C24.723 109.821 0.178721 85.277 0.178711 55C0.178719 35.1336 10.7464 17.7362 26.5674 8.12012L36.1514 17.7041ZM104.07 30.5342C107.26 36.9203 109.241 44.0157 109.711 51.5215H83.5166L104.07 30.5342ZM90.6074 13.3184C93.5048 15.796 96.1413 18.5696 98.4688 21.5938L75.9326 44.6045L67.8662 36.5381L90.6074 13.3184ZM70.8711 2.51172C74.8232 3.70515 78.5865 5.33347 82.1064 7.33984L60.6133 29.2852L52.5469 21.2188L70.8711 2.51172ZM55 0.178711C56.2356 0.178714 57.4616 0.221342 58.6768 0.301758L45.2939 13.9658L35.1943 3.86719C41.3372 1.48617 48.0156 0.178726 55 0.178711Z" stroke="rgba(255,255,255,0.3)" strokeWidth={0.357143} fill="transparent" />
+        
+        {filledCount >= 1 ? (
+          <Path d="M36.4537 17.7536C36.4501 17.7554 36.4465 17.7571 36.4429 17.7589L54.6254 35.9418L45.2916 45.2756L25.5929 25.5769C18.0603 33.1056 13.4009 43.5088 13.4009 55.0001C13.4009 77.9745 32.0255 96.5992 55 96.5992C70.7977 96.5992 84.5379 87.7928 91.581 74.8215H106.318C98.3638 95.4023 78.3874 110 55 110C24.6243 110 1.04951e-05 85.3757 0 55.0001C7.74953e-06 35.0187 10.6555 17.5265 26.5939 7.89453L36.4537 17.7536Z" fill="white" />
+        ) : null}
+        {filledCount >= 2 ? (
+          <Path d="M109.608 61.6006C109.057 66.2068 107.936 70.6378 106.319 74.8218H91.5819C91.5857 74.8148 91.5896 74.8077 91.5934 74.8006H50.0508V61.6006H109.608Z" fill="white" />
+        ) : null}
+        {filledCount >= 3 ? (
+          <Path d="M104.118 30.2305C107.411 36.7489 109.446 44.0118 109.901 51.6998H83.0908L104.118 30.2305Z" fill="white" />
+        ) : null}
+        {filledCount >= 4 ? (
+          <Path d="M90.5989 13.0742C93.5948 15.6206 96.3147 18.4821 98.7065 21.608L75.9344 44.8585L67.6162 36.5403L90.5989 13.0742Z" fill="white" />
+        ) : null}
+        {filledCount >= 5 ? (
+          <Path d="M70.8198 2.30957C74.8984 3.53236 78.7774 5.21652 82.3973 7.30015L60.6154 29.54L52.2969 21.2214L70.8198 2.30957Z" fill="white" />
+        ) : null}
+        {filledCount >= 6 ? (
+          <Path d="M54.9999 0C56.3714 2.84221e-06 57.7315 0.0499106 59.0778 0.148577L45.2957 14.2205L34.874 3.79883C41.1072 1.34679 47.8963 1.49269e-05 54.9999 0Z" fill="white" />
+        ) : null}
+      </Svg>
+    </View>
+  );
+}
+
+const logoStyles = StyleSheet.create({
+  container: {
+    width: 110,
+    height: 110,
+    marginBottom: Spacing["3xl"],
+    marginTop: -Spacing["4xl"],
+  },
+});
+
+function WalletLoader() {
+  const [frame, setFrame] = useState(0);
+  const frames = ['|', '/', '-', '\\'];
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFrame((prev) => (prev + 1) % frames.length);
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <View style={loaderStyles.overlay}>
+      <View style={loaderStyles.container}>
+        <Text style={loaderStyles.asciiFrame}>{frames[frame]}</Text>
+        <Text style={loaderStyles.loadingText}>
+          DERIVING WALLET
+        </Text>
+        <Text style={loaderStyles.subText}>
+          Securing your keys...
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const loaderStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  asciiFrame: {
+    fontFamily: 'monospace',
+    fontSize: 48,
+    color: '#A4BAD2',
+    marginBottom: Spacing["2xl"],
+  },
+  loadingText: {
+    fontFamily: Fonts.astroSpace,
+    fontSize: 14,
+    color: '#FFFFFF',
+    letterSpacing: 3,
+  },
+  subText: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: Spacing.sm,
+  },
+});
+
+export default function PINInputScreen() {
+  const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<RouteProps>();
+  const [pin, setPin] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+  const [isLockedOut, setIsLockedOut] = useState(false);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
+  const [txErrorModalVisible, setTxErrorModalVisible] = useState(false);
+  const [txErrorMessage, setTxErrorMessage] = useState("");
+  const [pinErrorModalVisible, setPinErrorModalVisible] = useState(false);
+  const [pinErrorMessage, setPinErrorMessage] = useState("");
+  const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { sendWalletAddress, setWalletAddress, setSolanaKeypair, status: connectionStatus, cleanup, notifyAttemptUpdate, walletAddress: connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction, clearPendingPrivacyAction, sendPrivacyActionResponse } = useWebRTC();
+  const { getSecret, requiresSecret } = useAuthPreference();
+  
+  const shakeAnim = useSharedValue(0);
+  const scaleAnim = useSharedValue(1);
+
+  useEffect(() => {
+    return () => {
+      if (lockoutTimerRef.current) {
+        clearInterval(lockoutTimerRef.current);
+      }
+    };
+  }, []);
+
+  const startLockout = useCallback((seconds: number) => {
+    setIsLockedOut(true);
+    setLockoutRemaining(seconds);
+    
+    if (lockoutTimerRef.current) {
+      clearInterval(lockoutTimerRef.current);
+    }
+    
+    lockoutTimerRef.current = setInterval(() => {
+      setLockoutRemaining((prev) => {
+        if (prev <= 1) {
+          if (lockoutTimerRef.current) {
+            clearInterval(lockoutTimerRef.current);
+            lockoutTimerRef.current = null;
+          }
+          setIsLockedOut(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  const dotsAnimStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: shakeAnim.value },
+      { scale: scaleAnim.value },
+    ],
+  }));
+
+  const deriveWalletAddress = async (nfcData: string, pinCode: string): Promise<string> => {
+    const secret = requiresSecret ? await getSecret() : undefined;
+    return deriveSolanaAddress(nfcData, pinCode, secret || undefined);
+  };
+
+  const handleSessionReset = useCallback(() => {
+    cleanup();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Home' }],
+    });
+  }, [cleanup, navigation]);
+
+  const handleKeyPress = useCallback(async (key: string) => {
+    if (isProcessing || isLockedOut || attempts >= MAX_ATTEMPTS) return;
+
+    if (Platform.OS !== "web") {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+
+    if (key === "backspace") {
+      setPin((prev) => prev.slice(0, -1));
+      return;
+    }
+
+    if (pin.length >= PIN_LENGTH) return;
+
+    const newPin = pin + key;
+    setPin(newPin);
+
+    if (newPin.length === PIN_LENGTH) {
+      setIsProcessing(true);
+      
+      console.log('[PIN] 6 digits entered, processing...');
+      console.log('[PIN] Route params:', JSON.stringify(route.params));
+      console.log('[PIN] Connection status:', connectionStatus);
+      console.log('[PIN] Attempts:', attempts);
+      
+      scaleAnim.value = withSequence(
+        withSpring(1.1, { damping: 15 }),
+        withSpring(1, { damping: 15 })
+      );
+
+      // Wait for animations to complete and UI to render, then run heavy computation
+      InteractionManager.runAfterInteractions(() => {
+        // Longer delay to ensure loading screen is fully painted before heavy computation
+        setTimeout(async () => {
+          try {
+            if (!route.params?.nfcData || !route.params?.sessionId) {
+              console.log('[PIN] ERROR: Missing NFC data or sessionId');
+              throw new Error("Missing required NFC data");
+            }
+
+            // Card Action Flow
+            if (route.params?.cardAction) {
+              console.log('[PIN] Card action flow detected');
+              const cardAction = route.params.cardAction;
+              
+              if (!connectedWalletAddress || !dashboardBaseUrl) {
+                throw new Error("Session not active");
+              }
+
+              console.log('[PIN] Deriving wallet address for card action...');
+              const secret = requiresSecret ? await getSecret() : undefined;
+              const derivedAddress = deriveSolanaAddress(route.params.nfcData, newPin, secret || undefined);
+              console.log('[PIN] Derived address:', derivedAddress);
+              console.log('[PIN] Connected wallet:', connectedWalletAddress);
+
+              // Add minimal delay so user can see loading animation
+              await new Promise(resolve => setTimeout(resolve, 1200));
+
+              if (derivedAddress !== connectedWalletAddress) {
+                console.log('[PIN] Wallet mismatch - invalid card or PIN');
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                setPin("");
+                setIsProcessing(false);
+                setPinErrorMessage("Wrong card or PIN. The derived wallet address doesn't match.");
+                setPinErrorModalVisible(true);
+                return;
+              }
+
+              console.log('[PIN] Wallet verified, calling API to approve action...');
+              const response = await fetch(
+                `${dashboardBaseUrl}/api/striga/card/action/execute`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    actionId: cardAction.actionId,
+                    approved: true,
+                    walletAddress: connectedWalletAddress,
+                  }),
+                }
+              );
+
+              const data = await response.json();
+              console.log('[PIN] API response:', data);
+
+              if (data.success) {
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+                clearPendingCardAction();
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Home' }],
+                });
+              } else {
+                throw new Error(data.error || "Failed to execute action");
+              }
+              return;
+            }
+
+            // Privacy Action Flow
+            if (route.params?.privacyAction) {
+              console.log('[PIN] Privacy action flow detected');
+              const privacyAction = route.params.privacyAction;
+              
+              if (!connectedWalletAddress) {
+                throw new Error("Session not active");
+              }
+
+              console.log('[PIN] Deriving wallet address for privacy action...');
+              const secret = requiresSecret ? await getSecret() : undefined;
+              const derivedAddress = deriveSolanaAddress(route.params.nfcData, newPin, secret || undefined);
+              console.log('[PIN] Derived address:', derivedAddress);
+              console.log('[PIN] Expected wallet:', privacyAction.walletAddress);
+
+              await new Promise(resolve => setTimeout(resolve, 1200));
+
+              if (derivedAddress !== privacyAction.walletAddress) {
+                console.log('[PIN] Wallet mismatch - sending rejection');
+                sendPrivacyActionResponse(
+                  privacyAction.actionId,
+                  privacyAction.actionType,
+                  false,
+                  derivedAddress,
+                  "Wallet address mismatch"
+                );
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                setPin("");
+                setIsProcessing(false);
+                setPinErrorMessage("Wrong card or PIN. The derived wallet address doesn't match.");
+                setPinErrorModalVisible(true);
+                return;
+              }
+
+              console.log('[PIN] Wallet verified, sending approval...');
+              sendPrivacyActionResponse(
+                privacyAction.actionId,
+                privacyAction.actionType,
+                true,
+                derivedAddress
+              );
+
+              if (Platform.OS !== "web") {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+              clearPendingPrivacyAction();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Home' }],
+              });
+              return;
+            }
+
+            // Mobile-initiated Shield/Unshield Flow
+            if (route.params?.shieldAction) {
+              console.log('[PIN] Shield action flow detected');
+              const shieldAction = route.params.shieldAction;
+
+              console.log('[PIN] Deriving wallet keypair for shield action...');
+              const shieldSecret = requiresSecret ? await getSecret() : undefined;
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin, shieldSecret || undefined);
+              const derivedAddress = keypair.publicKey.toBase58();
+              console.log('[PIN] Derived address:', derivedAddress);
+              console.log('[PIN] Expected wallet:', shieldAction.walletAddress);
+
+              await new Promise(resolve => setTimeout(resolve, 800));
+
+              if (derivedAddress !== shieldAction.walletAddress) {
+                console.log('[PIN] Wallet mismatch - invalid card or PIN');
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                setPin("");
+                setIsProcessing(false);
+                setPinErrorMessage("Wrong card or PIN. The derived wallet address doesn't match.");
+                setPinErrorModalVisible(true);
+                return;
+              }
+
+              console.log('[PIN] Wallet verified, navigating to Processing...');
+              if (Platform.OS !== "web") {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+
+              navigation.replace('Processing', {
+                actionType: shieldAction.type,
+                amount: shieldAction.amount,
+                source: 'public',
+                keypairSecretKey: Array.from(keypair.secretKey),
+                unsignedTx: shieldAction.unsignedTx,
+                walletAddress: shieldAction.walletAddress,
+              });
+              return;
+            }
+
+            // Mobile-initiated Send Flow (regular transfer)
+            if (route.params?.sendAction) {
+              console.log('[PIN] Send flow detected');
+              const sendAction = route.params.sendAction;
+
+              console.log('[PIN] Deriving wallet keypair...');
+              const sendSecret = requiresSecret ? await getSecret() : undefined;
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin, sendSecret || undefined);
+              const derivedAddress = keypair.publicKey.toBase58();
+              console.log('[PIN] Derived address:', derivedAddress);
+              console.log('[PIN] Expected wallet:', sendAction.walletAddress);
+
+              await new Promise(resolve => setTimeout(resolve, 800));
+
+              if (derivedAddress !== sendAction.walletAddress) {
+                console.log('[PIN] Wallet mismatch - invalid card or PIN');
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                setPin("");
+                setIsProcessing(false);
+                setPinErrorMessage("Wrong card or PIN. The derived wallet address doesn't match.");
+                setPinErrorModalVisible(true);
+                return;
+              }
+
+              console.log('[PIN] Wallet verified, navigating to Processing...');
+              if (Platform.OS !== "web") {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+
+              navigation.replace('Processing', {
+                actionType: 'send',
+                amount: sendAction.amount,
+                recipient: sendAction.recipientAddress,
+                keypairSecretKey: Array.from(keypair.secretKey),
+                walletAddress: sendAction.walletAddress,
+              });
+              return;
+            }
+
+            // Mobile-initiated Private Send Flow
+            if (route.params?.privateSendAction) {
+              console.log('[PIN] Private Send flow detected');
+              const privateSendAction = route.params.privateSendAction;
+
+              console.log('[PIN] Deriving wallet keypair...');
+              const privateSendSecret = requiresSecret ? await getSecret() : undefined;
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin, privateSendSecret || undefined);
+              const derivedAddress = keypair.publicKey.toBase58();
+              console.log('[PIN] Derived address:', derivedAddress);
+              console.log('[PIN] Expected wallet:', privateSendAction.walletAddress);
+
+              await new Promise(resolve => setTimeout(resolve, 800));
+
+              if (derivedAddress !== privateSendAction.walletAddress) {
+                console.log('[PIN] Wallet mismatch - invalid card or PIN');
+                if (Platform.OS !== "web") {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+                setPin("");
+                setIsProcessing(false);
+                setPinErrorMessage("Wrong card or PIN. The derived wallet address doesn't match.");
+                setPinErrorModalVisible(true);
+                return;
+              }
+
+              console.log('[PIN] Wallet verified, navigating to Processing...');
+              if (Platform.OS !== "web") {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+
+              navigation.replace('Processing', {
+                actionType: 'privateSend',
+                amount: privateSendAction.amount,
+                source: privateSendAction.source,
+                recipient: privateSendAction.recipientAddress,
+                keypairSecretKey: Array.from(keypair.secretKey),
+                walletAddress: privateSendAction.walletAddress,
+              });
+              return;
+            }
+
+            // Local wallet flow (NFC auto-detect without dashboard)
+            const isLocalSession = route.params.sessionId.startsWith("local_");
+            
+            if (isLocalSession) {
+              console.log('[PIN] Local session flow detected');
+              
+              console.log('[PIN] Deriving wallet keypair...');
+              const localSecret = requiresSecret ? await getSecret() : undefined;
+              const keypair = deriveSolanaKeypair(route.params.nfcData, newPin, localSecret || undefined);
+              const walletAddress = keypair.publicKey.toBase58();
+              console.log('[PIN] Wallet derived:', walletAddress);
+
+              console.log('[PIN] Storing keypair in context...');
+              setSolanaKeypair(keypair);
+              setWalletAddress(walletAddress);
+
+              await new Promise(resolve => setTimeout(resolve, 1200));
+
+              if (Platform.OS !== "web") {
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+
+              logPINAttempt(true, attempts + 1);
+              logWalletDerived();
+              navigation.replace("Wallet");
+              return;
+            }
+
+            // Normal wallet connection flow (with dashboard)
+            // Skip connection check for mobile-initiated shield/unshield flows (shieldAction)
+            const shieldAction = route.params?.shieldAction;
+            if (connectionStatus !== "connected" && !shieldAction) {
+              console.log('[PIN] ERROR: Not connected, status:', connectionStatus);
+              throw new Error("Dashboard not connected");
+            }
+
+            console.log('[PIN] Deriving wallet keypair...');
+            const dashboardSecret = requiresSecret ? await getSecret() : undefined;
+            const keypair = deriveSolanaKeypair(route.params.nfcData, newPin, dashboardSecret || undefined);
+            const walletAddress = keypair.publicKey.toBase58();
+            console.log('[PIN] Wallet derived:', walletAddress);
+
+            console.log('[PIN] Storing keypair in context for signing...');
+            setSolanaKeypair(keypair);
+
+            // Add minimal delay so user can see loading animation
+            await new Promise(resolve => setTimeout(resolve, 1200));
+
+            console.log('[PIN] Sending wallet address to dashboard...');
+            const sent = sendWalletAddress(walletAddress);
+            console.log('[PIN] Send result:', sent);
+            if (!sent) {
+              throw new Error("Failed to send wallet address");
+            }
+
+            setWalletAddress(walletAddress);
+
+            if (Platform.OS !== "web") {
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+
+            logPINAttempt(true, attempts + 1);
+            logWalletDerived();
+            navigation.replace("Wallet");
+          } catch (error) {
+            console.log('[PIN] CATCH ERROR:', error instanceof Error ? error.message : error);
+            
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            
+            // Check if we're in a specific flow that needs error modal
+            const isPrivateSendFlow = !!route.params?.privateSendAction;
+            const isSendFlow = !!route.params?.sendAction;
+            const isShieldFlow = !!route.params?.shieldAction;
+            const isPrivacyFlow = !!route.params?.privacyAction;
+            const isActionFlow = isPrivateSendFlow || isShieldFlow || isPrivacyFlow || isSendFlow;
+            
+            const newAttempts = attempts + 1;
+            setAttempts(newAttempts);
+            logPINAttempt(false, newAttempts);
+            
+            shakeAnim.value = withSequence(
+              withTiming(-10, { duration: 50 }),
+              withTiming(10, { duration: 50 }),
+              withTiming(-10, { duration: 50 }),
+              withTiming(10, { duration: 50 }),
+              withTiming(0, { duration: 50 })
+            );
+            
+            if (Platform.OS !== "web") {
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            }
+            
+            setPin("");
+            setIsProcessing(false);
+            
+            const isHardLockout = newAttempts >= MAX_ATTEMPTS;
+            notifyAttemptUpdate(newAttempts, MAX_ATTEMPTS, isHardLockout);
+            
+            const lockoutDelay = LOCKOUT_DELAYS[newAttempts] || 0;
+            if (lockoutDelay > 0) {
+              startLockout(lockoutDelay);
+            }
+            
+            // Show error modal for action flows with actual error message
+            if (isActionFlow) {
+              setTxErrorMessage(errorMessage || "Transaction failed. Please try again.");
+              setTxErrorModalVisible(true);
+            }
+          }
+        }, 500);
+      });
+    }
+  }, [pin, isProcessing, isLockedOut, attempts, navigation, route.params, connectionStatus, sendWalletAddress, setWalletAddress, setSolanaKeypair, shakeAnim, scaleAnim, startLockout, notifyAttemptUpdate, connectedWalletAddress, dashboardBaseUrl, clearPendingCardAction, clearPendingPrivacyAction, sendPrivacyActionResponse]);
+
+  const renderPinBox = (index: number) => {
+    const isFilled = index < pin.length;
+    return (
+      <View
+        key={index}
+        style={[
+          styles.pinBox,
+          isFilled && styles.pinBoxFilled,
+        ]}
+      />
+    );
+  };
+
+  const renderKey = (key: string, index: number) => {
+    if (key === "") {
+      return <View key={`empty-${index}`} style={styles.keyEmpty} />;
+    }
+
+    const displayText = key === "backspace" ? "<" : key;
+    const testID = key === "backspace" ? "button-delete" : `button-key-${key}`;
+
+    return (
+      <Pressable
+        key={key}
+        style={styles.keyWrapper}
+        onPress={() => handleKeyPress(key)}
+        testID={testID}
+      >
+        {({ pressed }) => (
+          <View style={styles.keyContainer}>
+            <Svg width={62} height={62} viewBox="0 0 62 62" style={styles.keySvg}>
+              <Rect
+                x={3.72}
+                y={3.72}
+                width={54.56}
+                height={54.56}
+                fill="white"
+                fillOpacity={pressed ? 0.2 : 0.1}
+              />
+              <Rect
+                x={0.31}
+                y={0.31}
+                width={61.38}
+                height={61.38}
+                stroke="#484848"
+                strokeWidth={0.62}
+                fill="transparent"
+              />
+            </Svg>
+            <Text style={styles.keyText}>{displayText}</Text>
+          </View>
+        )}
+      </Pressable>
+    );
+  };
+
+  if (attempts >= MAX_ATTEMPTS && !isLockedOut) {
+    return (
+      <View style={styles.container}>
+        <ScreenHeader rightText="Locked" />
+        <View style={styles.content}>
+          <LogoFill filledCount={0} />
+          <View style={styles.titleSection}>
+            <Text style={styles.title}>SESSION LOCKED</Text>
+            <Text style={styles.subtitle}>Too many failed attempts</Text>
+            <Text style={styles.lockoutText}>
+              Please start a new session from the dashboard
+            </Text>
+          </View>
+          <Pressable
+            style={styles.resetButton}
+            onPress={handleSessionReset}
+            testID="button-reset-session"
+          >
+            <Text style={styles.resetButtonText}>Start New Session</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  // Show loading screen when processing
+  if (isProcessing) {
+    return <WalletLoader />;
+  }
+
+  return (
+    <View style={styles.container}>
+      <ScreenHeader rightText="Enter PIN" />
+
+      <View style={styles.content}>
+        <LogoFill filledCount={pin.length} />
+
+        <View style={styles.titleSection}>
+          <Text style={styles.title}>ENTER YOUR PIN</Text>
+          <Text style={styles.subtitle}>Enter your 6 Digit Secure PIN</Text>
+          {route.params?.shieldAction ? (
+            <View style={styles.actionBadge}>
+              <Text style={styles.actionBadgeText}>
+                {route.params.shieldAction.type === 'shield' ? 'SHIELD' : 'UNSHIELD'} {route.params.shieldAction.amount} SOL
+              </Text>
+            </View>
+          ) : null}
+          
+          {attempts > 0 ? (
+            <Text style={styles.attemptsText}>
+              {MAX_ATTEMPTS - attempts} attempts remaining
+            </Text>
+          ) : null}
+          
+          {isLockedOut ? (
+            <Text style={styles.lockoutText}>
+              Try again in {lockoutRemaining}s
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={[styles.keypad, isLockedOut && styles.keypadDisabled]}>
+          {KEYPAD_NUMBERS.map((key, index) => renderKey(key, index))}
+        </View>
+      </View>
+
+      <CyberpunkErrorModal
+        visible={txErrorModalVisible}
+        title="TRANSACTION FAILED"
+        message={txErrorMessage}
+        onCancel={() => {
+          setTxErrorModalVisible(false);
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Wallet' }],
+          });
+        }}
+        onRetry={() => {
+          setTxErrorModalVisible(false);
+          const shieldAction = route.params?.shieldAction;
+          if (shieldAction) {
+            navigation.replace("NFCReader", {
+              sessionId: route.params.sessionId,
+              shieldAction: shieldAction,
+            });
+          }
+        }}
+      />
+
+      <CyberpunkErrorModal
+        visible={pinErrorModalVisible}
+        title="VERIFICATION FAILED"
+        message={pinErrorMessage}
+        onCancel={() => {
+          setPinErrorModalVisible(false);
+          navigation.goBack();
+        }}
+        onRetry={() => {
+          setPinErrorModalVisible(false);
+          setPin("");
+        }}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0A0A0A",
+  },
+  content: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.xl,
+  },
+  titleSection: {
+    alignItems: "center",
+    marginBottom: Spacing["4xl"],
+  },
+  title: {
+    fontFamily: Fonts.astroSpace,
+    fontSize: 24,
+    color: Colors.dark.text,
+    letterSpacing: 2,
+    marginBottom: Spacing.sm,
+  },
+  subtitle: {
+    fontFamily: Fonts.body,
+    fontSize: Typography.caption.fontSize,
+    color: "rgba(255, 255, 255, 0.5)",
+  },
+  actionBadge: {
+    backgroundColor: "rgba(164, 186, 210, 0.15)",
+    borderWidth: 1,
+    borderColor: "#A4BAD2",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    marginTop: Spacing.md,
+  },
+  actionBadgeText: {
+    fontFamily: Fonts.astroSpace,
+    fontSize: 11,
+    color: "#A4BAD2",
+    letterSpacing: 1,
+  },
+  pinContainer: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginBottom: Spacing["4xl"],
+  },
+  pinBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: "#4A4A4A",
+  },
+  pinBoxFilled: {
+    backgroundColor: Colors.dark.text,
+  },
+  keypad: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    width: "100%",
+    maxWidth: 270,
+    gap: 16,
+    marginBottom: Spacing["4xl"],
+  },
+  keyWrapper: {
+    width: 62,
+    height: 62,
+  },
+  keyContainer: {
+    width: 62,
+    height: 62,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  keySvg: {
+    position: "absolute",
+  },
+  keyEmpty: {
+    width: 62,
+    height: 62,
+  },
+  keyText: {
+    fontFamily: Fonts.body,
+    fontSize: 20,
+    color: Colors.dark.text,
+  },
+  attemptsText: {
+    fontFamily: Fonts.body,
+    fontSize: Typography.caption.fontSize,
+    color: "#FF6B6B",
+    marginTop: Spacing.sm,
+  },
+  lockoutText: {
+    fontFamily: Fonts.body,
+    fontSize: Typography.caption.fontSize,
+    color: "#FF6B6B",
+    marginTop: Spacing.xs,
+    textAlign: "center",
+  },
+  keypadDisabled: {
+    opacity: 0.5,
+  },
+  resetButton: {
+    backgroundColor: "#A4BAD2",
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing["2xl"],
+    borderRadius: 8,
+    marginTop: Spacing["2xl"],
+  },
+  resetButtonText: {
+    fontFamily: Fonts.body,
+    fontSize: 16,
+    color: "#0A0A0A",
+    fontWeight: "600",
+  },
+});

@@ -1,7 +1,7 @@
 import { Keypair, Transaction, VersionedTransaction, VersionedMessage } from '@solana/web3.js';
 import nacl from 'tweetnacl';
 
-const DASHBOARD_URL = process.env.EXPO_PUBLIC_DASHBOARD_URL || 'https://3c523cdf-759f-4bc9-bad8-d989589f390a-00-lt9jwg5u2kqw.spock.replit.dev';
+const DASHBOARD_URL = process.env.EXPO_PUBLIC_DASHBOARD_URL || '';
 
 export interface PreparePrivateSendRequest {
   source: 'public' | 'shielded';
