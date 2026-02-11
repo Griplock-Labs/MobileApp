@@ -5,15 +5,17 @@ import type {
   WalletIndex,
   WalletProfile,
   DeviceRecoveryObject,
+  RecoveryFileObject,
   PasskeyWrappedShare,
   Bytes,
 } from './types';
 import { bytesToHex } from './encoding';
 
-const WALLET_INDEX_KEY = 'griplock:wallet_index';
-const DEVICE_OBJ_PREFIX = 'griplock:device:';
-const PASSKEY_SHARE_PREFIX = 'griplock:passkey:';
-const DEVICE_KEY_PREFIX = 'griplock:devkey:';
+const WALLET_INDEX_KEY = 'griplock.wallet_index';
+const DEVICE_OBJ_PREFIX = 'griplock.device.';
+const PASSKEY_SHARE_PREFIX = 'griplock.passkey.';
+const DEVICE_KEY_PREFIX = 'griplock.devkey.';
+const RECOVERY_DATA_PREFIX = 'griplock.recovery.';
 
 export async function getWalletIndex(): Promise<WalletIndex> {
   const raw = await SecureStore.getItemAsync(WALLET_INDEX_KEY);
@@ -90,6 +92,18 @@ export async function getDeviceKey(walletId: WalletId): Promise<Bytes | null> {
   return bytes;
 }
 
+export async function saveRecoveryData(walletId: WalletId, recoveryFile: RecoveryFileObject): Promise<void> {
+  const key = `${RECOVERY_DATA_PREFIX}${walletId}`;
+  await SecureStore.setItemAsync(key, JSON.stringify(recoveryFile));
+}
+
+export async function getRecoveryData(walletId: WalletId): Promise<RecoveryFileObject | null> {
+  const key = `${RECOVERY_DATA_PREFIX}${walletId}`;
+  const raw = await SecureStore.getItemAsync(key);
+  if (!raw) return null;
+  return JSON.parse(raw);
+}
+
 export async function deleteWallet(walletId: WalletId, nfcUidHash: string): Promise<void> {
   const index = await getWalletIndex();
   delete index.profiles[nfcUidHash];
@@ -98,6 +112,7 @@ export async function deleteWallet(walletId: WalletId, nfcUidHash: string): Prom
   await SecureStore.deleteItemAsync(`${DEVICE_OBJ_PREFIX}${walletId}`);
   await SecureStore.deleteItemAsync(`${PASSKEY_SHARE_PREFIX}${walletId}`);
   await SecureStore.deleteItemAsync(`${DEVICE_KEY_PREFIX}${walletId}`);
+  await SecureStore.deleteItemAsync(`${RECOVERY_DATA_PREFIX}${walletId}`);
 }
 
 export function hashNfcUid(uid: string): string {

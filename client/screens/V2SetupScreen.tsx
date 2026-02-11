@@ -36,6 +36,7 @@ import {
   addWalletProfile,
   saveDeviceObject,
   saveDeviceKey,
+  saveRecoveryData,
   getWalletByNfcUid,
 } from '@/lib/v2/wallet-store';
 import { exportRecoveryFile } from '@/lib/v2/recovery-file';
@@ -418,6 +419,7 @@ export default function V2SetupScreen() {
   const [walletId, setWalletId] = useState('');
   const [recoveryFile, setRecoveryFile] = useState<RecoveryFileObject | null>(null);
   const [recoveryExported, setRecoveryExported] = useState(false);
+  const [pendingProfile, setPendingProfile] = useState<WalletProfile | null>(null);
 
   const pulseAnim = useSharedValue(0);
 
@@ -524,10 +526,11 @@ export default function V2SetupScreen() {
           deviceKey,
         });
 
-        await addWalletProfile(result.walletProfile);
         await saveDeviceObject(result.deviceObject);
         await saveDeviceKey(result.walletId, deviceKey);
+        await saveRecoveryData(result.walletId, result.recoveryFile);
 
+        setPendingProfile(result.walletProfile);
         setWalletAddress(result.address);
         setWalletId(result.walletId);
         setRecoveryFile(result.recoveryFile);
@@ -570,6 +573,19 @@ export default function V2SetupScreen() {
     }
   }, [recoveryFile]);
 
+  const finalizeSetup = useCallback(async () => {
+    if (pendingProfile) {
+      try {
+        await addWalletProfile(pendingProfile);
+        console.log('[V2Setup] Wallet profile saved to index');
+        setPendingProfile(null);
+      } catch (err) {
+        console.error('[V2Setup] Failed to save wallet profile:', err);
+      }
+    }
+    setStep('success');
+  }, [pendingProfile]);
+
   const handleSkipRecovery = useCallback(() => {
     Alert.alert(
       'Skip Backup?',
@@ -579,11 +595,11 @@ export default function V2SetupScreen() {
         {
           text: 'Skip',
           style: 'destructive',
-          onPress: () => setStep('success'),
+          onPress: () => finalizeSetup(),
         },
       ]
     );
-  }, []);
+  }, [finalizeSetup]);
 
   const handleGoToWallet = useCallback(() => {
     if (Platform.OS !== 'web') {
@@ -943,7 +959,7 @@ export default function V2SetupScreen() {
                 styles.skipButton,
                 pressed ? styles.skipButtonPressed : null,
               ]}
-              onPress={recoveryExported ? () => setStep('success') : handleSkipRecovery}
+              onPress={recoveryExported ? finalizeSetup : handleSkipRecovery}
             >
               <Text style={styles.skipButtonText}>
                 {recoveryExported ? 'CONTINUE' : 'SKIP FOR NOW'}

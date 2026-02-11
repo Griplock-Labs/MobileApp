@@ -4,7 +4,7 @@ import { getRandomValues } from 'expo-crypto';
 import type { Bytes, KdfParams } from './types';
 import { utf8Encode } from './encoding';
 
-const DEFAULT_PBKDF2_ITERS = 600000;
+const DEFAULT_PBKDF2_ITERS = 10000;
 
 const DEFAULT_KDF_PARAMS: KdfParams = {
   algo: 'pbkdf2',

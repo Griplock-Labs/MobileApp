@@ -20,10 +20,9 @@ import Animated, {
 import { Colors, Spacing, Fonts, Typography } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useWebRTC } from "@/context/WebRTCContext";
-import { useAuthPreference } from "@/context/AuthPreferenceContext";
 import ScreenHeader from "@/components/ScreenHeader";
 import { logNFCTap, logEvent } from "@/lib/analytics";
-import { deriveSolanaAddress, deriveSolanaKeypair } from "@/lib/crypto";
+import { getWalletByNfcUid } from "@/lib/v2/wallet-store";
 
 let NfcManager: any = null;
 let NfcTech: any = null;
@@ -114,18 +113,11 @@ export default function NFCReaderScreen() {
   const insets = useSafeAreaInsets();
   const [isWebPlatform] = useState(Platform.OS === "web");
   const { setNfcData, status: connectionStatus, setWalletAddress } = useWebRTC();
-  const { authLevel, getSecret } = useAuthPreference();
   const [nfcSupported, setNfcSupported] = useState<boolean | null>(null);
   const [nfcEnabled, setNfcEnabled] = useState<boolean | null>(null);
   const [scanStatus, setScanStatus] = useState<string>("Waiting for card...");
   const scanningRef = useRef(false);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Use ref to always have latest authLevel value (avoids stale closure issue)
-  const authLevelRef = useRef(authLevel);
-  useEffect(() => {
-    authLevelRef.current = authLevel;
-  }, [authLevel]);
   
   const cardFloatAnim = useSharedValue(0);
   const phoneFloatAnim = useSharedValue(0);
@@ -241,126 +233,26 @@ export default function NFCReaderScreen() {
         await NfcManager.cancelTechnologyRequest();
         scanningRef.current = false;
         
-        // Use ref to get latest auth level (avoids stale closure)
-        const currentAuthLevel = authLevelRef.current;
-        console.log('[NFC] Auth level:', currentAuthLevel);
-        console.log('[NFC] Session ID:', route.params?.sessionId);
-        if (route.params?.privateSendAction) {
-          console.log('[NFC] privateSendAction detected:', JSON.stringify(route.params.privateSendAction, null, 2));
-        }
-        if (route.params?.shieldAction) {
-          console.log('[NFC] shieldAction detected:', JSON.stringify(route.params.shieldAction, null, 2));
-        }
-        if (route.params?.sendAction) {
-          console.log('[NFC] sendAction detected:', JSON.stringify(route.params.sendAction, null, 2));
-        }
-        
-        // Check auth level - nfc_secret skips PIN and derives directly with secret
-        if (currentAuthLevel === "nfc_secret") {
-          console.log('[NFCReader] Auth level is nfc_secret, deriving wallet with secret only');
-          const secret = await getSecret();
-          if (secret) {
-            // Handle Shield/Unshield action
-            if (route.params?.shieldAction) {
-              const shieldAction = route.params.shieldAction;
-              console.log('[NFCReader] nfc_secret: Shield action detected');
-              const keypair = deriveSolanaKeypair(nfcDataString, undefined, secret);
-              const derivedAddress = keypair.publicKey.toBase58();
-              console.log('[NFCReader] Derived address:', derivedAddress);
-              console.log('[NFCReader] Expected wallet:', shieldAction.walletAddress);
-              
-              if (derivedAddress !== shieldAction.walletAddress) {
-                console.log('[NFCReader] Wallet mismatch - invalid card');
-                navigation.goBack();
-                return;
-              }
-              
-              navigation.replace('Processing', {
-                actionType: shieldAction.type,
-                amount: shieldAction.amount,
-                source: 'public',
-                keypairSecretKey: Array.from(keypair.secretKey),
-                unsignedTx: shieldAction.unsignedTx,
-                walletAddress: shieldAction.walletAddress,
-              });
-              return;
-            }
-            
-            // Handle Send action
-            if (route.params?.sendAction) {
-              const sendAction = route.params.sendAction;
-              console.log('[NFCReader] nfc_secret: Send action detected');
-              const keypair = deriveSolanaKeypair(nfcDataString, undefined, secret);
-              const derivedAddress = keypair.publicKey.toBase58();
-              console.log('[NFCReader] Derived address:', derivedAddress);
-              console.log('[NFCReader] Expected wallet:', sendAction.walletAddress);
-              
-              if (derivedAddress !== sendAction.walletAddress) {
-                console.log('[NFCReader] Wallet mismatch - invalid card');
-                navigation.goBack();
-                return;
-              }
-              
-              navigation.replace('Processing', {
-                actionType: 'send',
-                amount: sendAction.amount,
-                recipient: sendAction.recipientAddress,
-                keypairSecretKey: Array.from(keypair.secretKey),
-                walletAddress: sendAction.walletAddress,
-              });
-              return;
-            }
-            
-            // Handle Private Send action
-            if (route.params?.privateSendAction) {
-              const privateSendAction = route.params.privateSendAction;
-              console.log('[NFCReader] nfc_secret: Private Send action detected');
-              const keypair = deriveSolanaKeypair(nfcDataString, undefined, secret);
-              const derivedAddress = keypair.publicKey.toBase58();
-              console.log('[NFCReader] Derived address:', derivedAddress);
-              console.log('[NFCReader] Expected wallet:', privateSendAction.walletAddress);
-              
-              if (derivedAddress !== privateSendAction.walletAddress) {
-                console.log('[NFCReader] Wallet mismatch - invalid card');
-                navigation.goBack();
-                return;
-              }
-              
-              navigation.replace('Processing', {
-                actionType: 'privateSend',
-                amount: privateSendAction.amount,
-                source: privateSendAction.source,
-                recipient: privateSendAction.recipientAddress,
-                keypairSecretKey: Array.from(keypair.secretKey),
-                walletAddress: privateSendAction.walletAddress,
-              });
-              return;
-            }
-            
-            // No action - just login to wallet
-            const derivedWalletAddress = deriveSolanaAddress(nfcDataString, undefined, secret);
-            console.log('[NFCReader] Derived wallet address:', derivedWalletAddress);
-            setWalletAddress?.(derivedWalletAddress);
-            navigation.replace("Wallet");
-          } else {
-            console.log('[NFCReader] No secret found, falling back to PIN screen');
-            navigation.replace("PINInput", {
-              sessionId: route.params?.sessionId || "",
-              nfcData: nfcDataString,
-              shieldAction: route.params?.shieldAction,
-              privateSendAction: route.params?.privateSendAction,
-              sendAction: route.params?.sendAction,
-            });
+        try {
+          const existingProfile = await getWalletByNfcUid(tagId);
+          if (!existingProfile) {
+            console.log('[NFC] No V2 profile found, routing to V2Setup');
+            navigation.replace('V2Setup', { nfcUid: tagId });
+            return;
           }
-        } else {
-          console.log('[NFCReader] Navigating to PIN screen');
-          navigation.replace("PINInput", {
-            sessionId: route.params?.sessionId || "",
-            nfcData: nfcDataString,
+          console.log('[NFC] V2 profile found:', existingProfile.walletId);
+          navigation.replace('V2Unlock', {
+            nfcUid: tagId,
+            walletProfile: existingProfile,
             shieldAction: route.params?.shieldAction,
             privateSendAction: route.params?.privateSendAction,
             sendAction: route.params?.sendAction,
           });
+          return;
+        } catch (e) {
+          console.log('[NFC] V2 profile check failed:', e);
+          navigation.goBack();
+          return;
         }
       }
     } catch (e: any) {
@@ -378,7 +270,7 @@ export default function NFCReaderScreen() {
         }, 2000);
       }
     }
-  }, [nfcSupported, nfcEnabled, navigation, route.params?.sessionId, setNfcData, cleanupNfc, getSecret, setWalletAddress]);
+  }, [nfcSupported, nfcEnabled, navigation, route.params?.sessionId, setNfcData, cleanupNfc, setWalletAddress]);
 
   useEffect(() => {
     if (nfcSupported && nfcEnabled && !scanningRef.current) {

@@ -230,12 +230,6 @@ export default function HomeScreen() {
   const nfcRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const cleanupRef = useRef(cleanup);
   
-  // Use ref to always have latest authLevel value (avoids stale closure issue)
-  const authLevelRef = useRef(authLevel);
-  useEffect(() => {
-    authLevelRef.current = authLevel;
-  }, [authLevel]);
-  
   useEffect(() => {
     const currentVersion = Constants.expoConfig?.version || '1.0.0';
     checkForUpdates(currentVersion).then(setUpdateInfo);
@@ -310,30 +304,21 @@ export default function HomeScreen() {
         await NfcManager.cancelTechnologyRequest();
         nfcScanningRef.current = false;
         
-        const localSessionId = `local_${Date.now()}`;
-        
-        // Check auth level - nfc_secret skips PIN and derives directly with secret
-        // Use ref to get latest auth level (avoids stale closure)
-        const currentAuthLevel = authLevelRef.current;
-        console.log('[HomeScreen NFC] Current auth level:', currentAuthLevel);
-        if (currentAuthLevel === "nfc_secret") {
-          console.log('[HomeScreen NFC] Auth level is nfc_secret, navigating to DeriveWallet');
-          const secret = await getSecret();
-          if (secret) {
-            navigation.navigate("DeriveWallet", { nfcData: nfcDataString });
+        const { getWalletByNfcUid } = require("@/lib/v2/wallet-store");
+        try {
+          const existingProfile = await getWalletByNfcUid(tagId);
+          if (!existingProfile) {
+            console.log('[HomeScreen NFC] No V2 profile, routing to V2Setup');
+            navigation.navigate("V2Setup", { nfcUid: tagId });
           } else {
-            console.log('[HomeScreen NFC] No secret found, falling back to PIN screen');
-            navigation.navigate("PINInput", {
-              sessionId: localSessionId,
-              nfcData: nfcDataString,
+            console.log('[HomeScreen NFC] V2 profile found:', existingProfile.walletId);
+            navigation.navigate("V2Unlock", {
+              nfcUid: tagId,
+              walletProfile: existingProfile,
             });
           }
-        } else {
-          console.log('[HomeScreen NFC] Navigating to PIN screen with session:', localSessionId);
-          navigation.navigate("PINInput", {
-            sessionId: localSessionId,
-            nfcData: nfcDataString,
-          });
+        } catch (e) {
+          console.log('[HomeScreen NFC] V2 routing error:', e);
         }
       }
     } catch (e: any) {

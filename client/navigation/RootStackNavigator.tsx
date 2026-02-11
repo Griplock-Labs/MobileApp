@@ -24,6 +24,7 @@ import SuccessScreen from "@/screens/SuccessScreen";
 import SettingsScreen from "@/screens/SettingsScreen";
 import DeriveWalletScreen from "@/screens/DeriveWalletScreen";
 import V2SetupScreen from "@/screens/V2SetupScreen";
+import V2UnlockScreen from "@/screens/V2UnlockScreen";
 
 export type CardActionParams = {
   actionId: string;
@@ -109,6 +110,22 @@ export type RootStackParamList = {
   Settings: undefined;
   DeriveWallet: { nfcData: string };
   V2Setup: { nfcUid: string };
+  V2Unlock: {
+    nfcUid: string;
+    walletProfile: {
+      walletId: string;
+      nfcUidHash: string;
+      address: string;
+      createdAt: string;
+      authPolicy: {
+        pinRequired: boolean;
+        secretRequired: boolean;
+      };
+    };
+    shieldAction?: ShieldActionParams;
+    privateSendAction?: PrivateSendActionParams;
+    sendAction?: SendActionParams;
+  };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -241,6 +258,11 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="V2Setup"
         component={V2SetupScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="V2Unlock"
+        component={V2UnlockScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>
