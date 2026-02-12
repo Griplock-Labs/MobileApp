@@ -81,7 +81,7 @@ function CreateWalletButton({ onPress }: { onPress: () => void }) {
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
-  const { walletAddress, cleanup, sendDisconnect } = useWebRTC();
+  const { walletAddress, cleanup, sendDisconnect, status: connectionStatus } = useWebRTC();
   const [addMoreModalVisible, setAddMoreModalVisible] = useState(false);
   const [privateInfoModalVisible, setPrivateInfoModalVisible] = useState(false);
   const [balanceErrorModalVisible, setBalanceErrorModalVisible] = useState(false);
@@ -182,6 +182,30 @@ export default function WalletScreen() {
       >
         <View style={styles.header}>
           <GriplockLogo />
+        </View>
+
+        <View style={[
+          styles.connectionBanner,
+          connectionStatus === 'connected'
+            ? styles.connectionBannerConnected
+            : styles.connectionBannerDisconnected,
+        ]}>
+          <View style={[
+            styles.connectionDot,
+            connectionStatus === 'connected'
+              ? styles.connectionDotConnected
+              : styles.connectionDotDisconnected,
+          ]} />
+          <Text style={[
+            styles.connectionText,
+            connectionStatus === 'connected'
+              ? styles.connectionTextConnected
+              : styles.connectionTextDisconnected,
+          ]}>
+            {connectionStatus === 'connected'
+              ? 'CONNECTED TO DASHBOARD'
+              : 'DASHBOARD NOT CONNECTED'}
+          </Text>
         </View>
 
         <WalletCard
@@ -351,5 +375,47 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: Spacing.lg,
     marginTop: Spacing["3xl"],
+  },
+  connectionBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginBottom: Spacing.lg,
+    alignSelf: "center",
+  },
+  connectionBannerConnected: {
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  },
+  connectionBannerDisconnected: {
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+  },
+  connectionDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 8,
+  },
+  connectionDotConnected: {
+    backgroundColor: "#FFFFFF",
+  },
+  connectionDotDisconnected: {
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+  },
+  connectionText: {
+    fontFamily: Fonts.heading,
+    fontSize: 10,
+    letterSpacing: 2,
+  },
+  connectionTextConnected: {
+    color: "#FFFFFF",
+  },
+  connectionTextDisconnected: {
+    color: "rgba(255, 255, 255, 0.35)",
   },
 });

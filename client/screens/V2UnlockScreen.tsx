@@ -81,7 +81,7 @@ export default function V2UnlockScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<V2UnlockRouteProp>();
   const { nfcUid, walletProfile, shieldAction, privateSendAction, sendAction } = route.params;
-  const { setWalletAddress, setSolanaKeypair } = useWebRTC();
+  const { setWalletAddress, setSolanaKeypair, sendWalletAddress } = useWebRTC();
 
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -202,6 +202,7 @@ export default function V2UnlockScreen() {
 
       setSolanaKeypair(keypair);
       setWalletAddress?.(result.address);
+      sendWalletAddress(result.address);
       navigation.replace('Wallet');
     } catch (err: any) {
       console.error('[V2Unlock] Unlock failed:', err);

@@ -126,9 +126,8 @@ export default function NFCReaderScreen() {
     checkNfcSupport();
     return () => {
       if (NfcManager && Platform.OS !== "web") {
-        try {
-          NfcManager.cancelTechnologyRequest().catch(() => {});
-        } catch (e) {}
+        try { NfcManager.unregisterTagEvent().catch(() => {}); } catch (e) {}
+        try { NfcManager.cancelTechnologyRequest().catch(() => {}); } catch (e) {}
       }
     };
   }, []);
@@ -197,6 +196,51 @@ export default function NFCReaderScreen() {
     }
   }, []);
 
+  const handleTagDiscovered = useCallback(async (tag: any) => {
+    if (!tag) return;
+
+    console.log('[NFC] Tag detected:', JSON.stringify(tag));
+    logNFCTap(true);
+    if (Platform.OS !== "web") {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
+    const rawTagId = tag.id || "";
+    const tagId = rawTagId.replace(/[^0-9a-f]/gi, "").toLowerCase();
+    const nfcDataString = `griplock_${tagId}`;
+
+    console.log('[NFC] Processed NFC data:', nfcDataString);
+    console.log('[NFC] Connection status before navigate:', connectionStatus);
+
+    setScanStatus("Card detected!");
+    setNfcData(nfcDataString);
+
+    try {
+      await NfcManager.unregisterTagEvent();
+    } catch (_) {}
+    scanningRef.current = false;
+
+    try {
+      const existingProfile = await getWalletByNfcUid(tagId);
+      if (!existingProfile) {
+        console.log('[NFC] No V2 profile found, routing to V2Setup');
+        navigation.replace('V2Setup', { nfcUid: tagId });
+        return;
+      }
+      console.log('[NFC] V2 profile found:', existingProfile.walletId);
+      navigation.replace('V2Unlock', {
+        nfcUid: tagId,
+        walletProfile: existingProfile,
+        shieldAction: route.params?.shieldAction,
+        privateSendAction: route.params?.privateSendAction,
+        sendAction: route.params?.sendAction,
+      });
+    } catch (e) {
+      console.log('[NFC] V2 profile check failed:', e);
+      navigation.goBack();
+    }
+  }, [navigation, route.params, setNfcData, connectionStatus]);
+
   const startNfcScan = useCallback(async () => {
     if (!NfcManager || !nfcSupported || !nfcEnabled) return;
     
@@ -208,61 +252,38 @@ export default function NFCReaderScreen() {
     setScanStatus("Waiting for card...");
 
     try {
-      await cleanupNfc();
-      
-      await NfcManager.requestTechnology(NfcTech.Ndef);
-      const tag = await NfcManager.getTag();
-      
-      if (tag) {
-        console.log('[NFC] Tag detected:', JSON.stringify(tag));
-        logNFCTap(true);
-        if (Platform.OS !== "web") {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-        
-        const rawTagId = tag.id || "";
-        const tagId = rawTagId.replace(/[^0-9a-f]/gi, "").toLowerCase();
-        const nfcDataString = `griplock_${tagId}`;
-        
-        console.log('[NFC] Processed NFC data:', nfcDataString);
-        console.log('[NFC] Connection status before navigate:', connectionStatus);
-        
-        setScanStatus("Card detected!");
-        setNfcData(nfcDataString);
-        
-        await NfcManager.cancelTechnologyRequest();
-        scanningRef.current = false;
-        
-        try {
-          const existingProfile = await getWalletByNfcUid(tagId);
-          if (!existingProfile) {
-            console.log('[NFC] No V2 profile found, routing to V2Setup');
-            navigation.replace('V2Setup', { nfcUid: tagId });
-            return;
-          }
-          console.log('[NFC] V2 profile found:', existingProfile.walletId);
-          navigation.replace('V2Unlock', {
-            nfcUid: tagId,
-            walletProfile: existingProfile,
-            shieldAction: route.params?.shieldAction,
-            privateSendAction: route.params?.privateSendAction,
-            sendAction: route.params?.sendAction,
-          });
-          return;
-        } catch (e) {
-          console.log('[NFC] V2 profile check failed:', e);
-          navigation.goBack();
-          return;
-        }
-      }
+      try {
+        await NfcManager.unregisterTagEvent();
+      } catch (_) {}
+
+      await NfcManager.registerTagEvent(
+        (tag: any) => {
+          handleTagDiscovered(tag);
+        },
+        'Hold your NFC card near the device',
+        { alertMessage: 'Hold your GRIPLOCK card near the device' }
+      );
+      console.log('[NFC] registerTagEvent active — waiting for any NFC tag');
     } catch (e: any) {
+      console.log('[NFC] registerTagEvent failed, falling back to NfcA:', e);
       logNFCTap(false);
+      scanningRef.current = false;
+
+      try {
+        await cleanupNfc();
+        await NfcManager.requestTechnology(NfcTech.NfcA);
+        const tag = await NfcManager.getTag();
+        if (tag) {
+          await handleTagDiscovered(tag);
+        }
+        try { await NfcManager.cancelTechnologyRequest(); } catch (_) {}
+      } catch (fallbackErr) {
+        console.log('[NFC] NfcA fallback also failed:', fallbackErr);
+        try { await NfcManager.cancelTechnologyRequest(); } catch (_) {}
+      }
+      
       setScanStatus("Waiting for card...");
       scanningRef.current = false;
-      
-      try {
-        await NfcManager.cancelTechnologyRequest();
-      } catch (cancelError) {}
       
       if (nfcSupported && nfcEnabled) {
         retryTimeoutRef.current = setTimeout(() => {
@@ -270,7 +291,7 @@ export default function NFCReaderScreen() {
         }, 2000);
       }
     }
-  }, [nfcSupported, nfcEnabled, navigation, route.params?.sessionId, setNfcData, cleanupNfc, setWalletAddress]);
+  }, [nfcSupported, nfcEnabled, cleanupNfc, handleTagDiscovered]);
 
   useEffect(() => {
     if (nfcSupported && nfcEnabled && !scanningRef.current) {
@@ -285,6 +306,7 @@ export default function NFCReaderScreen() {
       }
       scanningRef.current = false;
       if (NfcManager) {
+        try { NfcManager.unregisterTagEvent().catch(() => {}); } catch (_) {}
         NfcManager.cancelTechnologyRequest().catch(() => {});
       }
     };

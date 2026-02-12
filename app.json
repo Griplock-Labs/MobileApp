@@ -2,7 +2,7 @@
   "expo": {
     "name": "GRIPLOCK",
     "slug": "griplock",
-    "version": "1.3.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "griplock",
@@ -24,10 +24,7 @@
       "package": "com.griplock.app",
       "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false,
-      "permissions": [
-        "android.permission.NFC"
-      ]
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "single",
@@ -69,10 +66,7 @@
       "reactCompiler": false
     },
     "extra": {
-      "HELIUS_RPC_URL": "${EXPO_PUBLIC_HELIUS_RPC_URL}",
-      "eas": {
-        "projectId": "af453638-adee-4bbe-a28e-d5a8da1874c4"
-      }
+      "HELIUS_RPC_URL": "${EXPO_PUBLIC_HELIUS_RPC_URL}"
     }
   }
 }
